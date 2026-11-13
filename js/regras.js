@@ -13,7 +13,7 @@
     { id: 'alquebrado', nome: 'Alquebrado', curto: 'habilidades custam +1 PM' },
     { id: 'apavorado', nome: 'Apavorado', curto: '–5 em perícias; não se aproxima da fonte' },
     { id: 'atordoado', nome: 'Atordoado', curto: 'não pode fazer ações; desprevenido' },
-    { id: 'caido', nome: 'Caído', curto: '–5 ataque corpo a corpo; Defesa –5 c.a.c., +5 à distância' },
+    { id: 'caido', nome: 'Caído', curto: '–5 ataque c.a.c.; desloc. 1,5m; Defesa –5 c.a.c., +5 à distância' },
     { id: 'cego', nome: 'Cego', curto: '–5 perícias de For/Des; desprevenido e lento' },
     { id: 'confuso', nome: 'Confuso', curto: '1d6 no turno decide o que faz' },
     { id: 'debilitado', nome: 'Debilitado', curto: '–5 em testes de For/Des/Con', agrava: 'inconsciente' },
@@ -38,7 +38,7 @@
     { id: 'paralisado', nome: 'Paralisado', curto: 'só ações mentais; imóvel e indefeso' },
     { id: 'pasmo', nome: 'Pasmo', curto: 'não pode fazer ações' },
     { id: 'petrificado', nome: 'Petrificado', curto: 'RD 8; inconsciente' },
-    { id: 'sangrando', nome: 'Sangrando', curto: 'Con CD 15 no turno ou perde 1d6 PV', perigo: true },
+    { id: 'sangrando', nome: 'Sangrando', curto: 'início do turno: Con CD 15; falha –1d6 PV, passa remove', perigo: true },
     { id: 'sobrecarregado', nome: 'Sobrecarregado', curto: 'armadura –5; deslocamento –3m' },
     { id: 'surdo', nome: 'Surdo', curto: '–5 Iniciativa' },
     { id: 'surpreendido', nome: 'Surpreendido', curto: 'não age; desprevenido' },
@@ -47,8 +47,11 @@
   const COND = Object.fromEntries(CONDICOES.map(c => [c.id, c]));
 
   /** Aplica uma condição numa lista. Se já existe e tem `agrava`, troca pela mais grave (p. 394).
-   *  dur: {tipo:'cena'|'rodadas'|'indef', rest?}. Devolve {lista, nota}. */
-  function aplicarCondicao(lista, condId, dur, novoId) {
+   *  dur: {tipo:'cena'|'rodadas'|'indef', rest?, marco?}. marco = id de quem estava na vez quando a
+   *  condição foi aplicada (a duração em rodadas termina no início do turno dele, p. 232).
+   *  extra: campos copiados para a condição nova (ex.: {origem:'fome'}). Devolve {lista, nota}. */
+  function aplicarCondicao(lista, condId, dur, novoId, extra) {
+    dur = dur || { tipo: 'cena' };
     const base = COND[condId];
     const nomeLivre = base ? null : String(condId).slice(0, 40);
     const atual = lista || [];
@@ -57,7 +60,7 @@
       const mais = COND[base.agrava];
       const semAntiga = atual.filter(c => c !== existente && c.cond !== mais.id);
       return {
-        lista: semAntiga.concat([{ id: novoId(), cond: mais.id, dur: existente.dur }]),
+        lista: semAntiga.concat([Object.assign({ id: novoId(), cond: mais.id, dur: maiorDuracao(existente.dur, dur) }, extra || {})]),
         nota: base.nome + ' de novo → ' + mais.nome
       };
     }
@@ -65,11 +68,12 @@
       // mesma condição sem agravar: fica a maior duração
       return { lista: atual.map(c => c === existente ? Object.assign({}, c, { dur: maiorDuracao(c.dur, dur) }) : c), nota: null };
     }
-    const nova = { id: novoId(), cond: base ? condId : 'livre', nome: nomeLivre || undefined, dur: dur || { tipo: 'cena' } };
+    const nova = Object.assign({ id: novoId(), cond: base ? condId : 'livre', nome: nomeLivre || undefined, dur }, extra || {});
     return { lista: atual.concat([nova]), nota: null };
   }
 
   function maiorDuracao(a, b) {
+    if (!a) return b; if (!b) return a;
     const peso = d => d.tipo === 'indef' ? 1e9 : d.tipo === 'cena' ? 1e6 : (d.rest || 0);
     return peso(b) > peso(a) ? b : a;
   }
@@ -78,15 +82,16 @@
   function curtoCondicao(c) { return COND[c.cond] ? COND[c.cond].curto : ''; }
   function perigoCondicao(c) { return !!(COND[c.cond] && COND[c.cond].perigo); }
 
-  /** Passa uma rodada: reduz durações em rodadas; devolve {lista, expiradas[]} */
-  function passarRodada(lista) {
+  /** Desconta 1 rodada das durações em rodadas (só das que passam em `filtro`, se dado).
+   *  Devolve {lista, expiradas[]}. Quem chama decide o momento (início do turno do marco, p. 232). */
+  function passarRodada(lista, filtro) {
     const expiradas = [];
     const nova = [];
     (lista || []).forEach(c => {
-      if (c.dur && c.dur.tipo === 'rodadas') {
+      if (c.dur && c.dur.tipo === 'rodadas' && (!filtro || filtro(c))) {
         const rest = (c.dur.rest || 0) - 1;
         if (rest <= 0) { expiradas.push(c); return; }
-        nova.push(Object.assign({}, c, { dur: { tipo: 'rodadas', rest } }));
+        nova.push(Object.assign({}, c, { dur: Object.assign({}, c.dur, { rest }) }));
       } else nova.push(c);
     });
     return { lista: nova, expiradas };
@@ -126,8 +131,16 @@
     n = Math.max(0, Math.floor(n || 0));
     return Object.assign({}, rec, { atual: Math.min(rec.max, rec.atual + n) });
   }
-  /** PM não fica negativo ao gastar; recuperar não passa do máximo. */
-  function gastarPM(rec, n) { return Object.assign({}, rec, { atual: Math.max(0, rec.atual - Math.max(0, n | 0)) }); }
+  /** Não se pode gastar mais PM do que se tem (p. 106): pedido maior devolve `rec` sem mudança. */
+  function gastarPM(rec, n) {
+    n = Math.max(0, n | 0);
+    if (n > rec.atual) return rec;
+    return Object.assign({}, rec, { atual: rec.atual - n });
+  }
+  function podeGastarPM(rec, n) { return Math.max(0, n | 0) <= rec.atual; }
+
+  /** Morto: PV no limiar (p. 237) ou marcado (ex.: 4ª falha de fome, p. 319). */
+  function estaMorto(c) { return !!c.morto || estadoPV(c.pv.atual, c.pv.max) === 'morto'; }
 
   // ---------- Descanso (p. 106, 117, 162, 319) ----------
   const DESCANSOS = [
@@ -161,7 +174,7 @@
     const pv = Math.min(j.pv.max, j.pv.atual + r.pv);
     const pm = Math.min(j.pm.max, j.pm.atual + r.pm);
     let condicoes = j.condicoes || [];
-    if (j.pv.atual <= 0 && pv >= 1) condicoes = condicoes.filter(c => c.cond !== 'inconsciente' && c.cond !== 'sangrando');
+    if (j.pv.atual <= 0 && pv >= 1) condicoes = condicoes.filter(c => !(c.cond === 'sangrando' || (c.cond === 'inconsciente' && c.origem !== 'fome')));
     return {
       jogador: Object.assign({}, j, { pv: Object.assign({}, j.pv, { atual: pv }), pm: Object.assign({}, j.pm, { atual: pm }), condicoes }),
       ganhoPV: pv - j.pv.atual, ganhoPM: pm - j.pm.atual
@@ -173,18 +186,38 @@
    *  diasSemComer = dias completos sem comida. Devolve a CD do teste de hoje ou null. */
   function cdFome(diasSemComer) { return diasSemComer >= 2 ? 15 + (diasSemComer - 2) : null; }
 
-  /** Consome 1 ração (p. 162: alimenta uma pessoa por um dia). Sem ração, conta mais um dia sem comer. */
+  /** Consome 1 ração (p. 162: alimenta uma pessoa por um dia). Sem ração, conta mais um dia sem comer.
+   *  Comer cura os efeitos da fome (p. 319): zera as falhas e tira as condições de origem 'fome'. */
   function alimentar(j) {
-    if ((j.racoes || 0) > 0) return { jogador: Object.assign({}, j, { racoes: j.racoes - 1, diasSemComer: 0 }), comeu: true };
+    if ((j.racoes || 0) > 0) return {
+      jogador: Object.assign({}, j, { racoes: j.racoes - 1, diasSemComer: 0, falhasFome: 0, condicoes: (j.condicoes || []).filter(c => c.origem !== 'fome') }),
+      comeu: true
+    };
     return { jogador: Object.assign({}, j, { diasSemComer: (j.diasSemComer || 0) + 1 }), comeu: false };
   }
 
-  // ---------- Iniciativa (p. 230) ----------
+  /** Falha no teste de Fortitude da fome (p. 319): 1ª fatigado, 2ª exausto, 3ª inconsciente, 4ª morte.
+   *  Condições indefinidas com origem 'fome' (só comida remove). Devolve {jogador, efeito}. */
+  const EFEITOS_FOME = ['fatigado', 'exausto', 'inconsciente', 'morto'];
+  function falhaFome(j, novoId) {
+    const n = Math.min(4, (j.falhasFome || 0) + 1);
+    const efeito = EFEITOS_FOME[n - 1];
+    let condicoes = j.condicoes || [];
+    let morto = j.morto || null;
+    if (efeito === 'morto') morto = 'fome';
+    else condicoes = condicoes.filter(c => c.origem !== 'fome')
+      .concat([{ id: novoId(), cond: efeito, dur: { tipo: 'indef' }, origem: 'fome' }]);
+    return { jogador: Object.assign({}, j, { falhasFome: n, condicoes, morto }), efeito };
+  }
+
+  // ---------- Iniciativa (p. 231) ----------
   function d20(rng) { return 1 + Math.floor((rng || Math.random)() * 20); }
+  function d6(rng) { return 1 + Math.floor((rng || Math.random)() * 6); }
 
   /** Rola iniciativa. combatentes: [{id, tipo:'jogador'|'inimigo', iniciativa}]
-   *  inimigosEmGrupo: o mestre faz um único teste para os inimigos usando o menor bônus (p. 230).
-   *  Devolve {id: {d20, total, desempate}} */
+   *  inimigosEmGrupo: o mestre faz um único teste para os inimigos usando o menor bônus (p. 231).
+   *  Devolve {id: {d20, total, mod, desempate}}; mod = modificador usado no desempate
+   *  (no grupo, o menor bônus, para o grupo não se dividir em volta de um jogador). */
   function rolarIniciativa(combatentes, op, rng) {
     op = op || {};
     rng = rng || Math.random;
@@ -194,30 +227,32 @@
     if (op.inimigosEmGrupo && inimigos.length) {
       const menor = Math.min.apply(null, inimigos.map(i => i.iniciativa | 0));
       const dado = d20(rng);
-      grupo = { d20: dado, total: dado + menor };
+      grupo = { d20: dado, total: dado + menor, mod: menor, desempate: rng() };
     }
     combatentes.forEach(c => {
-      if (grupo && c.tipo === 'inimigo') res[c.id] = { d20: grupo.d20, total: grupo.total, desempate: rng() };
-      else { const dado = d20(rng); res[c.id] = { d20: dado, total: dado + (c.iniciativa | 0), desempate: rng() }; }
+      if (grupo && c.tipo === 'inimigo') res[c.id] = { d20: grupo.d20, total: grupo.total, mod: grupo.mod, desempate: grupo.desempate };
+      else { const dado = d20(rng); res[c.id] = { d20: dado, total: dado + (c.iniciativa | 0), mod: c.iniciativa | 0, desempate: rng() }; }
     });
     return res;
   }
 
-  /** Ordem: maior total; empate → maior modificador; persistindo, o desempate sorteado (p. 230). */
+  /** Ordem: maior total; empate → maior modificador; persistindo, o desempate sorteado (= novo teste, p. 231).
+   *  Resultados antigos sem `mod` usam o bônus do combatente. */
   function ordenarIniciativa(combatentes, inis) {
+    const mod = (x, c) => x.mod !== undefined ? x.mod : (c.iniciativa | 0);
     return combatentes.slice().sort((a, b) => {
       const A = inis[a.id] || { total: -99, desempate: 0 }, B = inis[b.id] || { total: -99, desempate: 0 };
       if (B.total !== A.total) return B.total - A.total;
-      if ((b.iniciativa | 0) !== (a.iniciativa | 0)) return (b.iniciativa | 0) - (a.iniciativa | 0);
+      if (mod(B, b) !== mod(A, a)) return mod(B, b) - mod(A, a);
       return (B.desempate || 0) - (A.desempate || 0);
     }).map(c => c.id);
   }
 
   const T20R = {
     CONDICOES, COND, aplicarCondicao, nomeCondicao, curtoCondicao, perigoCondicao, passarRodada, fimDeCena,
-    limiarMorte, estadoPV, descricaoInimigo, aplicarDano, aplicarCura, gastarPM,
+    limiarMorte, estadoPV, estaMorto, descricaoInimigo, aplicarDano, aplicarCura, gastarPM, podeGastarPM,
     DESCANSOS, DESCANSO, recuperacaoDescanso, aplicarDescanso,
-    cdFome, alimentar, d20, rolarIniciativa, ordenarIniciativa
+    cdFome, alimentar, falhaFome, EFEITOS_FOME, d20, d6, rolarIniciativa, ordenarIniciativa
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = T20R;
   else raiz.T20R = T20R;

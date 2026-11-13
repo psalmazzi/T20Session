@@ -22,7 +22,7 @@
       jogadores: [],
       combate: {
         ativo: false, rodada: 0, turno: 0, ordem: [], inis: {}, inimigos: [],
-        rerrolarCadaRodada: true, inimigosEmGrupo: false, mostrarPVInimigos: false
+        rerrolarCadaRodada: true, inimigosEmGrupo: true, mostrarPVInimigos: false, surpreendidos: []
       },
       recentes: [], // inimigos usados antes, para adicionar rápido
       log: []
@@ -39,8 +39,22 @@
       pv: { atual: n('pvAtual', pvMax), max: pvMax }, pm: { atual: n('pmAtual', pmMax), max: pmMax },
       defesa: n('defesa', 10), iniciativa: n('iniciativa', 0),
       dinheiro: (d.dinheiro === undefined || d.dinheiro === '' || isNaN(+d.dinheiro)) ? 0 : Math.round(+d.dinheiro * 100) / 100, racoes: n('racoes', 0), diasSemComer: n('diasSemComer', 0),
+      falhasFome: n('falhasFome', 0), morto: d.morto || null,
       condicoes: d.condicoes || []
     };
+  }
+
+  /** Estados salvos por versões antigas: campos que faltam recebem o padrão. */
+  function normalizar(e) {
+    const base = estadoInicial();
+    const s = Object.assign(base, e || {});
+    s.combate = Object.assign(estadoInicial().combate, s.combate || {});
+    if (!Array.isArray(s.combate.surpreendidos)) s.combate.surpreendidos = [];
+    s.jogadores = (s.jogadores || []).map(j => Object.assign({ dinheiro: 0, racoes: 0, diasSemComer: 0, falhasFome: 0, morto: null, condicoes: [] }, j));
+    s.combate.inimigos = (s.combate.inimigos || []).map(i => Object.assign({ visivel: true, condicoes: [] }, i));
+    s.log = Array.isArray(s.log) ? s.log : [];
+    s.recentes = Array.isArray(s.recentes) ? s.recentes : [];
+    return s;
   }
 
   function novoInimigo(d, i) {
@@ -66,33 +80,83 @@
     const o = ordemValida(s);
     return o[s.combate.turno] || null;
   }
-  function log(s, txt) { s.log = [{ t: Date.now(), txt }].concat(s.log || []).slice(0, 40); }
+  /** Histórico (mais recente primeiro). tipo 'aviso' = linha em destaque (ex.: sem ração). */
+  function log(s, txt, tipo) { s.log = [tipo ? { t: Date.now(), txt, tipo } : { t: Date.now(), txt }].concat(s.log || []).slice(0, 100); }
+  /** Não age nesta vez: derrotado, entrou nesta rodada (age na seguinte, p. 231) ou surpreendido na 1ª rodada (p. 231). */
+  function pulaVez(s, c) {
+    if (!c || foraDeCombate(c)) return true;
+    const cb = s.combate;
+    if (c.entrouNaRodada !== undefined && c.entrouNaRodada === cb.rodada) return true;
+    if (cb.rodada === 1 && (cb.surpreendidos || []).indexOf(c.id) >= 0 && (c.condicoes || []).some(x => x.cond === 'surpreendido')) return true;
+    return false;
+  }
+  /** Início do turno de cada id: desconta 1 das condições em rodadas cujo marco é esse id (p. 232). */
+  function inicioDeTurno(s, ids) {
+    const alvo = new Set(ids);
+    const expiradas = [];
+    if (!alvo.size) return expiradas;
+    combatentes(s).forEach(c => {
+      const r = R.passarRodada(c.condicoes, x => alvo.has(x.dur.marco));
+      c.condicoes = r.lista;
+      r.expiradas.forEach(x => expiradas.push(c.nome + ': ' + R.nomeCondicao(x)));
+    });
+    return expiradas;
+  }
+  const GRAVE = new Set(['inconsciente', 'sangrando']);
+  /** Dano/cura com as regras de 0 PV (p. 106, 237). Usado por `vida` e pelo sangramento. */
+  function mudarPV(s, c, n, tipo) {
+    const antes = c.pv.atual;
+    c.pv = tipo === 'cura' ? R.aplicarCura(c.pv, n) : R.aplicarDano(c.pv, n);
+    if (c.tipo !== 'jogador') return;
+    const indef = { tipo: 'indef' };
+    if (tipo !== 'cura' && n > 0) {
+      if (antes > 0 && c.pv.atual <= 0) {
+        // cai inconsciente e sangrando
+        c.condicoes = R.aplicarCondicao(c.condicoes, 'inconsciente', indef, uid).lista;
+        c.condicoes = R.aplicarCondicao(c.condicoes, 'sangrando', indef, uid).lista;
+      } else if (antes <= 0) {
+        // já caído e perde mais PV: volta a sangrar
+        c.condicoes = R.aplicarCondicao(c.condicoes, 'sangrando', indef, uid).lista;
+      }
+    } else if (tipo === 'cura' && antes <= 0 && c.pv.atual > antes) {
+      // qualquer cura de 1+ PV estabiliza; com 1+ PV recobra a consciência (inconsciência da fome fica)
+      c.condicoes = c.condicoes.filter(x => x.cond !== 'sangrando' && !(c.pv.atual >= 1 && x.cond === 'inconsciente' && x.origem !== 'fome'));
+    }
+  }
 
   // ---------- ações (mutam uma cópia; o Store guarda o snapshot anterior para desfazer) ----------
-  function rolarTodos(s, rng) {
+  /** manterManuais: valores digitados (jogador rolou o próprio dado) não são sobrescritos. */
+  function rolarTodos(s, rng, manterManuais) {
     const cs = combatentes(s);
-    s.combate.inis = R.rolarIniciativa(cs, { inimigosEmGrupo: s.combate.inimigosEmGrupo }, rng);
+    const velhos = s.combate.inis || {};
+    const novos = R.rolarIniciativa(cs, { inimigosEmGrupo: s.combate.inimigosEmGrupo }, rng);
+    if (manterManuais) Object.keys(velhos).forEach(id => { if (velhos[id] && velhos[id].manual && novos[id]) novos[id] = velhos[id]; });
+    s.combate.inis = novos;
     s.combate.ordem = R.ordenarIniciativa(cs, s.combate.inis);
     s.combate.turno = primeiroValido(s, 0);
   }
   function primeiroValido(s, desde) {
     const o = ordemValida(s);
-    for (let i = desde; i < o.length; i++) { const c = achar(s, o[i]); if (c && !foraDeCombate(c)) return i; }
+    for (let i = Math.max(0, desde); i < o.length; i++) { if (!pulaVez(s, achar(s, o[i]))) return i; }
     return -1;
   }
+  /** Fim da rodada. Condições sem marco (ou cujo marco saiu da ordem) descontam aqui;
+   *  as demais descontam no início do turno do marco (p. 232). */
   function novaRodada(s, rng) {
-    s.combate.rodada += 1;
+    const naOrdem = new Set(ordemValida(s));
     const expiradas = [];
     combatentes(s).forEach(c => {
-      const r = R.passarRodada(c.condicoes);
+      const r = R.passarRodada(c.condicoes, x => !x.dur.marco || !naOrdem.has(x.dur.marco));
       c.condicoes = r.lista;
       r.expiradas.forEach(x => expiradas.push(c.nome + ': ' + R.nomeCondicao(x)));
     });
+    s.combate.rodada += 1;
     s.combate.ordem = ordemValida(s);
-    if (s.combate.rerrolarCadaRodada) rolarTodos(s, rng);
+    if (s.combate.rerrolarCadaRodada) rolarTodos(s, rng, true);
     else s.combate.turno = primeiroValido(s, 0);
     if (s.combate.turno < 0) s.combate.turno = 0;
-    log(s, 'Rodada ' + s.combate.rodada + (expiradas.length ? ' · terminou: ' + expiradas.join(', ') : ''));
+    inicioDeTurno(s, s.combate.ordem.slice(0, s.combate.turno + 1)).forEach(x => expiradas.push(x));
+    log(s, 'Rodada ' + s.combate.rodada + (s.combate.rerrolarCadaRodada ? ' · iniciativa rolada de novo' : '') + (expiradas.length ? ' · terminou: ' + expiradas.join(', ') : ''));
     return expiradas;
   }
 
@@ -102,12 +166,14 @@
       const i = s.jogadores.findIndex(j => j.id === p.id);
       if (i < 0) { const j = novoJogador(p); s.jogadores.push(j); log(s, j.nome + ' entrou no grupo'); return; }
       const velho = s.jogadores[i];
-      const j = novoJogador(Object.assign({}, p, { condicoes: velho.condicoes }));
+      const j = novoJogador(Object.assign({}, p, { condicoes: velho.condicoes, falhasFome: velho.falhasFome, morto: 'morto' in p ? p.morto : velho.morto }));
       s.jogadores[i] = j;
     },
     removerJogador(s, p) {
-      s.jogadores = s.jogadores.filter(j => j.id !== p.id);
+      const j = s.jogadores.find(x => x.id === p.id); if (!j) return;
+      s.jogadores = s.jogadores.filter(x => x.id !== p.id);
       s.combate.ordem = ordemValida(s);
+      log(s, j.nome + ' saiu do grupo');
     },
     moverJogador(s, p) {
       const i = s.jogadores.findIndex(j => j.id === p.id), k = i + p.dir;
@@ -117,15 +183,26 @@
     /** p: {id, n, tipo:'dano'|'cura'} */
     vida(s, p) {
       const c = achar(s, p.id); if (!c || !p.n) return;
-      const antes = c.pv.atual;
-      c.pv = p.tipo === 'cura' ? R.aplicarCura(c.pv, p.n) : R.aplicarDano(c.pv, p.n);
-      if (c.tipo === 'jogador' && antes <= 0 && c.pv.atual >= 1)
-        c.condicoes = c.condicoes.filter(x => x.cond !== 'inconsciente' && x.cond !== 'sangrando'); // p. 237
+      mudarPV(s, c, p.n, p.tipo);
       log(s, c.nome + (p.tipo === 'cura' ? ' curou ' : ' sofreu ') + p.n + ' (PV ' + c.pv.atual + '/' + c.pv.max + ')');
     },
-    /** p: {id, n, tipo:'gastar'|'recuperar'} */
+    /** Teste de Con CD 15 do sangramento, no início do turno (p. 237). p: {id, passou} */
+    sangramento(s, p, rng) {
+      const c = achar(s, p.id); if (!c || !(c.condicoes || []).some(x => x.cond === 'sangrando')) return;
+      if (p.passou) {
+        c.condicoes = c.condicoes.filter(x => x.cond !== 'sangrando');
+        log(s, c.nome + ' passou em Con CD 15 e parou de sangrar');
+        return { dano: 0 };
+      }
+      const n = R.d6(rng);
+      mudarPV(s, c, n, 'dano');
+      log(s, c.nome + ' falhou em Con CD 15: sangrou ' + n + ' (PV ' + c.pv.atual + '/' + c.pv.max + ')', 'aviso');
+      return { dano: n };
+    },
+    /** p: {id, n, tipo:'gastar'|'recuperar'}. Não gasta mais PM do que tem (p. 106). */
     mana(s, p) {
       const c = achar(s, p.id); if (!c || !p.n) return;
+      if (p.tipo !== 'recuperar' && !R.podeGastarPM(c.pm, p.n)) return { aviso: 'PM insuficiente: ' + c.nome + ' tem ' + c.pm.atual + ' PM e precisa de ' + p.n };
       c.pm = p.tipo === 'recuperar' ? R.aplicarCura(c.pm, p.n) : R.gastarPM(c.pm, p.n);
       log(s, c.nome + (p.tipo === 'recuperar' ? ' recuperou ' : ' gastou ') + p.n + ' PM (' + c.pm.atual + '/' + c.pm.max + ')');
     },
@@ -137,7 +214,9 @@
     },
     addCondicao(s, p) {
       const c = achar(s, p.id); if (!c) return;
-      const r = R.aplicarCondicao(c.condicoes, p.cond, p.dur, uid);
+      const dur = Object.assign({ tipo: 'cena' }, p.dur || {});
+      if (dur.tipo === 'rodadas' && s.combate.ativo && daVez(s)) dur.marco = daVez(s); // p. 232
+      const r = R.aplicarCondicao(c.condicoes, p.cond, dur, uid);
       c.condicoes = r.lista;
       if (r.nota) log(s, c.nome + ': ' + r.nota);
       return r.nota;
@@ -146,39 +225,57 @@
 
     /** p: {tipo, cuidados:{id:true}, sopa, tormenta, comer} */
     descanso(s, p) {
-      const linhas = [];
+      const linhas = [], sem = [];
       s.jogadores = s.jogadores.map(j => {
         let r = R.aplicarDescanso(j, p.tipo, { cuidados: p.cuidados && p.cuidados[j.id], sopa: p.sopa, tormenta: p.tormenta });
         let jj = r.jogador;
-        if (p.comer) jj = R.alimentar(jj).jogador;
+        if (p.comer) { const a = R.alimentar(jj); jj = a.jogador; if (!a.comeu) sem.push(j.nome); }
         linhas.push(j.nome + ' +' + r.ganhoPV + ' PV +' + r.ganhoPM + ' PM');
         return jj;
       });
       s.dia = (s.dia || 1) + 1;
       log(s, 'Descanso ' + R.DESCANSO[p.tipo].nome.toLowerCase() + ' · ' + linhas.join(' · '));
+      if (sem.length) log(s, 'Sem ração: ' + sem.join(', '), 'aviso');
     },
     /** p: {ids?} — sem ids, alimenta todos */
     alimentar(s, p) {
       const ids = p && p.ids ? new Set(p.ids) : null;
-      const sem = [];
+      const sem = [], comeram = [];
       s.jogadores = s.jogadores.map(j => {
         if (ids && !ids.has(j.id)) return j;
         const r = R.alimentar(j);
-        if (!r.comeu) sem.push(j.nome);
+        (r.comeu ? comeram : sem).push(j.nome);
         return r.jogador;
       });
-      log(s, 'Grupo comeu' + (sem.length ? ' · sem ração: ' + sem.join(', ') : ''));
+      log(s, comeram.length ? 'Comeram 1 ração: ' + comeram.join(', ') : 'Ninguém tinha ração');
+      if (sem.length) log(s, 'Sem ração: ' + sem.join(', '), 'aviso');
       return sem;
+    },
+    /** Falhou na Fortitude da fome (p. 319). p: {id} */
+    falhaFome(s, p) {
+      const i = s.jogadores.findIndex(j => j.id === p.id); if (i < 0) return;
+      const r = R.falhaFome(s.jogadores[i], uid);
+      s.jogadores[i] = r.jogador;
+      const nome = r.efeito === 'morto' ? 'morreu de fome' : 'ficou ' + R.COND[r.efeito].nome.toLowerCase() + ' (fome)';
+      log(s, s.jogadores[i].nome + ' falhou na Fortitude e ' + nome, 'aviso');
+      return r.efeito;
     },
     limparCondicoesGrupo(s) { s.jogadores.forEach(j => { j.condicoes = R.fimDeCena(j.condicoes); }); log(s, 'Condições de cena removidas'); },
 
     // ----- combate -----
+    /** p: {surpreendidos?: [ids]} — surpreendidos ficam Surpreendido até o fim da 1ª rodada e não agem nela (p. 231). */
     iniciarCombate(s, p, rng) {
+      p = p || {};
       s.modo = 'combate';
-      s.combate.ativo = true; s.combate.rodada = 1;
+      s.combate.ativo = true; s.combate.rodada = 1; s.combate.inis = {};
+      combatentes(s).forEach(c => { delete c.entrouNaRodada; });
+      const ids = new Set(combatentes(s).map(c => c.id));
+      const surp = (p.surpreendidos || []).filter(id => ids.has(id));
+      s.combate.surpreendidos = surp;
+      surp.forEach(id => { const c = achar(s, id); c.condicoes = R.aplicarCondicao(c.condicoes, 'surpreendido', { tipo: 'rodadas', rest: 1 }, uid).lista; });
       rolarTodos(s, rng);
       if (s.combate.turno < 0) s.combate.turno = 0;
-      log(s, 'Combate iniciado');
+      log(s, 'Combate iniciado' + (surp.length ? ' · surpreendidos: ' + surp.map(id => achar(s, id).nome).join(', ') : ''));
     },
     /** p: {nome, pv, pm, defesa, iniciativa, qtd, visivel} */
     addInimigo(s, p, rng) {
@@ -191,12 +288,10 @@
       const rec = { nome: p.nome, pv: +p.pv || 10, pm: +p.pm || 0, defesa: +p.defesa || 10, iniciativa: +p.iniciativa || 0 };
       s.recentes = [rec].concat((s.recentes || []).filter(r => r.nome !== rec.nome)).slice(0, 12);
       if (s.combate.ativo) {
+        // entrou depois do início: teste próprio e age só na rodada seguinte (p. 231)
         const vez = daVez(s);
         const inis = R.rolarIniciativa(novos, {}, rng);
-        if (s.combate.inimigosEmGrupo) {
-          const outro = s.combate.inimigos.find(i => s.combate.inis[i.id] && novos.indexOf(i) < 0);
-          if (outro) novos.forEach(n => { inis[n.id] = Object.assign({}, s.combate.inis[outro.id], { desempate: Math.random() }); });
-        }
+        novos.forEach(n => { n.entrouNaRodada = s.combate.rodada; });
         Object.assign(s.combate.inis, inis);
         s.combate.ordem = R.ordenarIniciativa(combatentes(s), s.combate.inis);
         const k = s.combate.ordem.indexOf(vez); if (k >= 0) s.combate.turno = k;
@@ -213,6 +308,8 @@
     },
     removerInimigo(s, p) {
       const vez = daVez(s);
+      const c = s.combate.inimigos.find(i => i.id === p.id); if (!c) return;
+      log(s, c.nome + ' removido do combate');
       s.combate.inimigos = s.combate.inimigos.filter(i => i.id !== p.id);
       s.combate.ordem = ordemValida(s);
       const k = s.combate.ordem.indexOf(vez);
@@ -226,30 +323,45 @@
       const c = achar(s, p.id); if (!c) return;
       const total = Math.floor(+p.total);
       if (isNaN(total)) return;
-      s.combate.inis[p.id] = { d20: total - (c.iniciativa | 0), total, desempate: (s.combate.inis[p.id] || {}).desempate || Math.random(), manual: true };
+      s.combate.inis[p.id] = { d20: total - (c.iniciativa | 0), total, mod: c.iniciativa | 0, desempate: (s.combate.inis[p.id] || {}).desempate || Math.random(), manual: true };
       s.combate.ordem = R.ordenarIniciativa(combatentes(s), s.combate.inis);
       const k = s.combate.ordem.indexOf(vez); if (k >= 0) s.combate.turno = k;
     },
+    /** Avança a vez. As posições percorridas (inclusive as puladas) contam como início de turno para as durações (p. 232). */
     proximoTurno(s, p, rng) {
+      if (!s.combate.ativo) return;
       const o = ordemValida(s);
       s.combate.ordem = o;
-      const prox = primeiroValido(s, s.combate.turno + 1);
-      if (prox < 0) return { novaRodada: novaRodada(s, rng) };
+      const de = s.combate.turno;
+      const prox = primeiroValido(s, de + 1);
+      if (prox < 0) {
+        const ex = inicioDeTurno(s, o.slice(de + 1));
+        return { novaRodada: ex.concat(novaRodada(s, rng)) };
+      }
       s.combate.turno = prox;
+      const ex = inicioDeTurno(s, o.slice(de + 1, prox + 1));
+      if (ex.length) log(s, 'Terminou: ' + ex.join(', '));
+      return { expiradas: ex };
     },
     turnoAnterior(s) {
       const o = ordemValida(s);
-      for (let i = s.combate.turno - 1; i >= 0; i--) { const c = achar(s, o[i]); if (c && !foraDeCombate(c)) { s.combate.turno = i; return; } }
+      for (let i = s.combate.turno - 1; i >= 0; i--) { if (!pulaVez(s, achar(s, o[i]))) { s.combate.turno = i; return; } }
     },
     irPara(s, p) { const k = ordemValida(s).indexOf(p.id); if (k >= 0) { s.combate.ordem = ordemValida(s); s.combate.turno = k; } },
-    novaRodada(s, p, rng) { return { novaRodada: novaRodada(s, rng) }; },
-    opcaoCombate(s, p) { if (p.chave in s.combate) s.combate[p.chave] = !!p.valor; },
+    novaRodada(s, p, rng) {
+      if (!s.combate.ativo) return;
+      const o = ordemValida(s);
+      const ex = inicioDeTurno(s, o.slice(s.combate.turno + 1));
+      return { novaRodada: ex.concat(novaRodada(s, rng)) };
+    },
+    opcaoCombate(s, p) { if (['rerrolarCadaRodada', 'inimigosEmGrupo', 'mostrarPVInimigos'].indexOf(p.chave) >= 0) s.combate[p.chave] = !!p.valor; },
     /** Fim do combate = fim da cena: condições terminam (p. 394). */
     encerrarCombate(s, p) {
       const derrotados = s.combate.inimigos.filter(i => i.pv.atual <= 0).length;
       s.modo = 'grupo';
-      s.combate.ativo = false; s.combate.rodada = 0; s.combate.turno = 0; s.combate.ordem = []; s.combate.inis = {};
+      s.combate.ativo = false; s.combate.rodada = 0; s.combate.turno = 0; s.combate.ordem = []; s.combate.inis = {}; s.combate.surpreendidos = [];
       if (!p || p.manterInimigos !== true) s.combate.inimigos = [];
+      s.combate.inimigos.forEach(i => { delete i.entrouNaRodada; i.condicoes = R.fimDeCena(i.condicoes); });
       s.jogadores.forEach(j => { j.condicoes = R.fimDeCena(j.condicoes); });
       log(s, 'Fim do combate' + (derrotados ? ' · ' + derrotados + ' inimigo(s) derrotado(s)' : ''));
     },
@@ -340,11 +452,10 @@
       sub(fn) { subs.add(fn); return () => subs.delete(fn); },
       async abrir(id) {
         const e = await Sync.carregar(id);
-        estado = Object.assign(estadoInicial(), e || {});
-        estado.combate = Object.assign(estadoInicial().combate, estado.combate || {});
+        estado = normalizar(e);
         mesaId = id; pilha = []; refazer = [];
         LS.set('t20s.mesaAtiva', id);
-        Sync.assinar(id, remoto => { estado = remoto; emitir(false); });
+        Sync.assinar(id, remoto => { estado = normalizar(remoto); emitir(false); });
         anunciar(); emitir(false);
       },
       fechar() { Sync.desassinar(); estado = null; mesaId = null; emitir(false); },
@@ -388,7 +499,7 @@
     return st;
   }
 
-  const T20S = { ORIGEM, CANAL, LS, uid, estadoInicial, novoJogador, ACOES, Sync, criarStore, combatentes, achar, daVez, ordemValida, foraDeCombate };
+  const T20S = { ORIGEM, CANAL, LS, uid, estadoInicial, novoJogador, normalizar, ACOES, Sync, criarStore, combatentes, achar, daVez, ordemValida, foraDeCombate, pulaVez };
   if (typeof module !== 'undefined' && module.exports) module.exports = T20S;
   else raiz.T20S = T20S;
 })(typeof window !== 'undefined' ? window : globalThis);

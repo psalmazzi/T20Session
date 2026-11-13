@@ -6,7 +6,7 @@
   const raiz = document.getElementById('app');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const sinal = n => (n >= 0 ? '+' : '') + n;
-  const fmtT = n => 'T$ ' + (Math.round(n * 100) / 100).toLocaleString('pt-BR');
+  const fmtNum = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR');
 
   let mesaId = new URLSearchParams(location.search).get('mesa') || S.LS.get('t20s.mesaAtiva');
   let estado = mesaId ? S.LS.get('t20s.mesa.' + mesaId) : null;
@@ -54,7 +54,7 @@
     raiz.innerHTML = `<div class="centro"><form class="caixa" id="f">
       <h1>T20Session</h1><div class="sub">Tela dos jogadores · entre com a conta do mestre</div>
       <input type="email" name="email" placeholder="E-mail" required><input type="password" name="senha" placeholder="Senha" required>
-      <div class="erro">${esc(msg || '')}</div><button class="btn primario">Entrar</button></form></div>`;
+      <div class="erro">${esc(msg || '')}</div><button class="btn pri">Entrar</button></form></div>`;
     const f = document.getElementById('f');
     f.onsubmit = async ev => {
       ev.preventDefault();
@@ -64,27 +64,31 @@
   }
 
   // ---------- Render ----------
-  function barra(tipo, r, txt, extra) {
+  const ESPADAS = '\u2694\uFE0E';
+  // ◔ (U+25D4) em SVG: o glifo falta em várias fontes do sistema.
+  const RACAO = '<svg class="ic-racao" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 10V3.5A6.5 6.5 0 0 1 16.5 10Z" class="cheio"/></svg>';
+  function barra(tipo, r, extra) {
     const pct = r.max > 0 ? Math.max(0, Math.min(100, r.atual / r.max * 100)) : 0;
     return `<div class="d-barra ${tipo} ${extra || ''}"><span class="rot">${tipo.toUpperCase()}</span>
-      <div class="trilho"><i style="width:${pct}%"></i><span>${txt == null ? r.atual + ' / ' + r.max : txt}</span></div></div>`;
+      <span class="trilho"><i style="width:${pct}%"></i></span><span class="num">${r.atual} / ${r.max}</span></div>`;
   }
-  function conds(c, curto) {
+  function conds(c) {
     const l = c.condicoes || [];
     if (!l.length) return '';
     return `<div class="d-conds">${l.map(x => {
       const d = x.dur || {};
-      const dur = d.tipo === 'rodadas' ? ` · ${d.rest} rod.` : '';
+      const dur = d.tipo === 'rodadas' ? ` <i>${d.rest}r</i>` : '';
       const txt = R.curtoCondicao(x);
-      return `<span class="d-cond ${R.perigoCondicao(x) ? 'perigo' : ''}"><b>${esc(R.nomeCondicao(x))}</b>${dur}${curto && txt ? `<small>${esc(txt)}</small>` : ''}</span>`;
+      return `<span class="d-cond ${R.perigoCondicao(x) ? 'perigo' : ''}"><b>${esc(R.nomeCondicao(x))}</b>${dur}${txt ? `<small>${esc(txt)}</small>` : ''}</span>`;
     }).join('')}</div>`;
   }
-  function avisoPV(j) {
-    const e = R.estadoPV(j.pv.atual, j.pv.max);
-    if (e === 'morto') return '<div class="d-aviso forte">☠ No limiar da morte</div>';
-    if (e === 'caido') return `<div class="d-aviso forte">🩸 Caído · morre em ${R.limiarMorte(j.pv.max)}</div>`;
+  /** Rótulo de jogador caído/morto (#FFB4B4, sem ícone). */
+  function rotuloGrave(j) {
+    if (R.estaMorto(j)) return `<span class="d-grave">Morto${j.morto === 'fome' ? ' (fome)' : ''}</span>`;
+    if (R.estadoPV(j.pv.atual, j.pv.max) === 'caido') return `<span class="d-grave">Caído · faltam ${j.pv.atual - R.limiarMorte(j.pv.max)}</span>`;
     return '';
   }
+  function classePV(j) { const e = R.estadoPV(j.pv.atual, j.pv.max); return e === 'critico' ? 'critico' : (e === 'caido' || e === 'morto') ? 'zerado' : ''; }
 
   function render() {
     if (!raiz) return;
@@ -92,13 +96,20 @@
       raiz.innerHTML = `<div class="d-raiz"><div class="d-msg">${mesaId ? 'Aguardando a tela do mestre…' : 'Abra uma mesa na tela do mestre e clique em “Tela dos jogadores”.'}</div></div>`;
       return;
     }
-    const s = estado, cb = s.combate || {};
+    const s = S.normalizar(estado), cb = s.combate;
     const emCombate = cb.ativo;
     document.title = s.nome + ' · Jogadores';
     raiz.innerHTML = `<div class="d-raiz">
-      <div class="d-topo"><h1>${esc(s.nome)}</h1>
-        <div class="d-info">${emCombate ? `⚔ Rodada <b>${cb.rodada}</b>` : `Dia <b>${s.dia || 1}</b>`}</div></div>
+      <header class="d-topo"><h1>${esc(s.nome)}</h1>
+        <div class="d-info">${emCombate ? `<span class="gl">${ESPADAS}</span> Rodada ${cb.rodada}` : `Dia ${s.dia || 1}`}</div></header>
       <div class="d-corpo">${emCombate ? htmlCombate(s) : htmlGrupo(s)}</div></div>`;
+    ajustarDensidade();
+  }
+  /** Se a lista não couber, compacta (sem rolagem na TV). */
+  function ajustarDensidade() {
+    const o = raiz.querySelector('.d-ordem, .d-grade'); if (!o) return;
+    const corpo = raiz.querySelector('.d-corpo');
+    ['denso', 'muito-denso'].forEach(c => { if (corpo.scrollHeight > corpo.clientHeight + 1) o.classList.add(c); });
   }
 
   function htmlGrupo(s) {
@@ -106,14 +117,14 @@
     return `<div class="d-grade">${s.jogadores.map(j => {
       const e = R.estadoPV(j.pv.atual, j.pv.max);
       const cd = R.cdFome(j.diasSemComer);
-      return `<div class="d-card ${e === 'caido' ? 'caido' : e === 'morto' ? 'morto' : ''}">
+      return `<div class="d-card ${R.estaMorto(j) ? 'morto' : e === 'caido' ? 'caido' : ''}">
         <div class="d-nome"><b>${esc(j.nome)}</b><span>Nv ${j.nivel}${j.jogador ? ' · ' + esc(j.jogador) : ''}</span></div>
-        ${barra('pv', j.pv, null, e)}${barra('pm', j.pm)}
-        ${avisoPV(j)}
-        <div class="d-stats"><span class="d-stat">DEF <b>${j.defesa}</b></span><span class="d-stat">INI <b>${sinal(j.iniciativa)}</b></span>
-          <span class="d-stat">💰 <b>${fmtT(j.dinheiro)}</b></span><span class="d-stat">🍞 <b>${j.racoes}</b></span></div>
+        ${rotuloGrave(j)}
+        ${barra('pv', j.pv, classePV(j))}${barra('pm', j.pm)}
+        <div class="d-stats"><span>DEF <b>${j.defesa}</b></span><span>INI <b>${sinal(j.iniciativa)}</b></span>
+          <span>T$ <b>${fmtNum(j.dinheiro)}</b></span><span><span class="d-racao" title="Rações">${RACAO}</span> <b>${j.racoes}</b></span></div>
         ${j.diasSemComer ? `<div class="d-aviso">${j.diasSemComer} dia(s) sem comer${cd ? ` · Fortitude CD ${cd}` : ''}</div>` : ''}
-        ${conds(j, true)}
+        ${conds(j)}
       </div>`;
     }).join('')}</div>`;
   }
@@ -124,38 +135,41 @@
     const mapa = Object.fromEntries(todos.map(c => [c.id, c]));
     const ordem = (cb.ordem || []).filter(id => mapa[id]);
     const vezId = ordem[cb.turno];
-    const visiveis = ordem.map(id => mapa[id]).filter(c => c.tipo !== 'inimigo' || c.visivel);
+    const visivel = c => c.tipo !== 'inimigo' || c.visivel;
+    const visiveis = ordem.map(id => mapa[id]).filter(visivel);   // oculto: nem placeholder
     const vez = mapa[vezId];
-    const vezVisivel = vez && (vez.tipo !== 'inimigo' || vez.visivel);
-    // próximo visível e de pé
+    const vezVisivel = vez && visivel(vez);
+    // próximo visível que vai agir
     let prox = null;
     for (let k = 1; k <= ordem.length; k++) {
       const c = mapa[ordem[(cb.turno + k) % ordem.length]];
-      if (c && c.id !== vezId && (c.tipo !== 'inimigo' || (c.visivel && c.pv.atual > 0))) { prox = c; break; }
+      if (c && c.id !== vezId && visivel(c) && !(c.tipo === 'inimigo' && c.pv.atual <= 0)) { prox = c; break; }
     }
-    const denso = visiveis.length > 7;
     const linhas = visiveis.map(c => {
       const ini = (cb.inis || {})[c.id];
       const derrotado = c.tipo === 'inimigo' && c.pv.atual <= 0;
       const e = R.estadoPV(c.pv.atual, c.pv.max);
+      const caido = c.tipo === 'jogador' && (e === 'caido' || R.estaMorto(c));
       let recs;
-      if (c.tipo === 'jogador') recs = barra('pv', c.pv, null, e) + (c.pm.max > 0 ? barra('pm', c.pm) : '');
-      else if (cb.mostrarPVInimigos) recs = barra('pv', c.pv, null, e);
+      if (c.tipo === 'jogador') recs = barra('pv', c.pv, classePV(c)) + (c.pm.max > 0 ? barra('pm', c.pm) : '');
+      else if (derrotado) recs = '<div class="d-estado derrotado">Derrotado</div>';
+      else if (cb.mostrarPVInimigos) recs = barra('pv', c.pv, e === 'critico' ? 'critico' : '');
       else {
         const d = R.descricaoInimigo(c.pv.atual, c.pv.max);
-        const cls = { Ileso: 'ileso', Ferido: 'ferido', 'Muito ferido': 'muito', 'Quase caindo': 'quase', Derrotado: 'derrotado' }[d];
+        const cls = { Ileso: 'ileso', Ferido: 'ferido', 'Muito ferido': 'muito', 'Quase caindo': 'quase' }[d];
         recs = `<div class="d-estado ${cls}">${d}</div>`;
       }
-      return `<div class="d-linha ${c.tipo} ${c.id === vezId ? 'vez' : ''} ${derrotado ? 'derrotado' : ''} ${c.tipo === 'jogador' && e === 'caido' ? 'caido' : ''}">
+      return `<div class="d-linha ${c.tipo} ${c.id === vezId ? 'vez' : ''} ${derrotado ? 'derrotado' : ''} ${caido ? 'caido' : ''}">
         <div class="d-ini">${ini ? ini.total : '–'}</div>
-        <div class="d-n"><b>${esc(c.nome)}</b><small>${c.tipo === 'jogador' ? 'DEF ' + c.defesa : 'Inimigo'}</small>${c.tipo === 'jogador' ? avisoPV(c) : ''}</div>
+        <div class="d-n"><b>${esc(c.nome)}</b><small>${c.tipo === 'jogador' ? 'DEF ' + c.defesa : 'Inimigo'}</small>${c.tipo === 'jogador' ? rotuloGrave(c) : ''}</div>
         <div class="d-recs">${recs}</div>
-        <div>${conds(c, !denso)}</div></div>`;
+        <div class="d-cs">${conds(c)}</div></div>`;
     }).join('');
     return `<div class="d-vez"><span class="rot">Vez de</span><span class="quem">${vezVisivel ? esc(vez.nome) : '???'}</span>
         ${prox ? `<span class="prox">Depois: <b>${esc(prox.nome)}</b></span>` : ''}</div>
-      <div class="d-ordem ${denso ? 'denso' : ''}">${linhas}</div>`;
+      <div class="d-ordem">${linhas}</div>`;
   }
+  window.addEventListener('resize', () => render());
 
   // Tela cheia com duplo clique; mantém a tela acesa
   document.addEventListener('dblclick', () => { if (!document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); else if (document.exitFullscreen) document.exitFullscreen().catch(() => {}); });
