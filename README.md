@@ -35,7 +35,8 @@ Sem o passo 3, o app funciona em **modo local**: sem login, com os dados só naq
 | Estabilizar e acordar | Qualquer cura de 1+ PV tira Sangrando; com 1 PV ou mais recobra a consciência (cura, descanso) | 237 |
 | Sangrando | Na vez de quem sangra, o painel de turno lembra **Con CD 15**: Passou remove; Falhou perde 1d6 PV | 237 |
 | Morte | PV ≤ –10 ou ≤ –metade do PV máximo, o que for mais baixo | 237 |
-| Descanso | Ruim ½ nível, Normal 1×, Confortável 2×, Luxuosa 3× (PV e PM); sem dormir não recupera | 106, 319 |
+| Descanso | Individual: cada personagem entra ou não, com a própria condição (Ruim ½ nível, Normal 1×, Confortável 2×, Luxuosa 3×). Poderes marcados na ficha ajustam: Estoico sobe uma categoria, Descanso Natural faz relento contar como confortável, Vida Rústica garante o nível ao relento (p. 94, 133); imunes ignoram a Área de Tormenta (p. 319) |
+| Descanso (base) | Ruim ½ nível, Normal 1×, Confortável 2×, Luxuosa 3× (PV e PM); sem dormir não recupera | 106, 319 |
 | Cuidados prolongados | +1 PV por nível no descanso (marcar por personagem) | 117 |
 | Sopa de peixe / Área de Tormenta | +1 PM por nível / recuperação à metade, depois dos outros efeitos | 162, 319 |
 | Fome e sede | 1 ração por dia; o 1º dia sem comer não tem efeito; depois Fortitude CD 15 +1 por teste anterior. Botão **Falhou na Fortitude** no card: 1ª falha Fatigado, 2ª Exausto, 3ª Inconsciente, 4ª morte (condições marcadas "fome"; só comer remove) | 162, 319 |

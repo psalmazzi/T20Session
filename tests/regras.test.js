@@ -93,14 +93,37 @@ t('store: combate completo (inimigos, turnos, rodada, fim de cena)', () => {
   assert.strictEqual(s.jogadores[0].condicoes.length, 0);
   assert.strictEqual(s.modo, 'grupo');
 });
-t('store: descanso + comer avança o dia e consome ração', () => {
+t('store: descanso (formato antigo) consome ração', () => {
   const s = S.estadoInicial('t');
   S.ACOES.salvarJogador(s, { nome: 'Ana', nivel: 4, pvMax: 30, pvAtual: 10, pmMax: 12, pmAtual: 0, racoes: 2 });
   S.ACOES.descanso(s, { tipo: 'normal', comer: true, cuidados: { [s.jogadores[0].id]: true } });
   assert.strictEqual(s.jogadores[0].pv.atual, 18);
   assert.strictEqual(s.jogadores[0].pm.atual, 4);
   assert.strictEqual(s.jogadores[0].racoes, 1);
-  assert.strictEqual(s.dia, 2);
+});
+t('descanso individual: cada um com sua condição; quem fica de fora não muda', () => {
+  const s = S.estadoInicial('t');
+  S.ACOES.salvarJogador(s, { nome: 'Ana', nivel: 4, pvMax: 30, pvAtual: 10, pmMax: 12, pmAtual: 0, racoes: 1 });
+  S.ACOES.salvarJogador(s, { nome: 'Bia', nivel: 4, pvMax: 30, pvAtual: 10, pmMax: 12, pmAtual: 0 });
+  S.ACOES.salvarJogador(s, { nome: 'Caio', nivel: 4, pvMax: 30, pvAtual: 10, pmMax: 12, pmAtual: 0 });
+  const [a, b, c] = s.jogadores.map(j => j.id);
+  S.ACOES.descanso(s, { membros: { [a]: { tipo: 'luxuosa', comer: true }, [b]: { tipo: 'ruim', sopa: true } } });
+  assert.deepStrictEqual(s.jogadores.map(j => [j.pv.atual, j.pm.atual]), [[22, 12], [12, 6], [10, 0]]);
+  assert.strictEqual(s.jogadores[0].racoes, 0);
+  assert.strictEqual(s.jogadores[1].diasSemComer, 0);
+});
+t('poderes de descanso: Estoico, Descanso Natural, Vida Rústica, imune à Tormenta (p. 94, 133, 319)', () => {
+  const j = (pod, nivel) => S.novoJogador({ nivel: nivel || 4, pvMax: 99, pvAtual: 1, pmMax: 99, pmAtual: 0, poderes: pod });
+  assert.strictEqual(R.tipoEfetivo('normal', { estoico: true }), 'confortavel');
+  assert.strictEqual(R.tipoEfetivo('luxuosa', { estoico: true }), 'luxuosa');
+  assert.strictEqual(R.tipoEfetivo('ruim', { descansoNatural: true, estoico: true }), 'luxuosa');
+  assert.strictEqual(R.tipoEfetivo('sem_sono', { estoico: true }), 'sem_sono');
+  assert.strictEqual(R.aplicarDescanso(j({ estoico: true }), 'normal').ganhoPV, 8);
+  assert.strictEqual(R.aplicarDescanso(j({ descansoNatural: true }), 'ruim').ganhoPV, 8);
+  assert.strictEqual(R.aplicarDescanso(j({ vidaRustica: true }, 5), 'ruim').ganhoPV, 5);
+  assert.strictEqual(R.aplicarDescanso(j({ vidaRustica: true }, 5), 'normal', { tormenta: true }).ganhoPV, 2);
+  assert.strictEqual(R.aplicarDescanso(j({ imuneTormenta: true }), 'normal', { tormenta: true }).ganhoPV, 4);
+  assert.strictEqual(R.aplicarDescanso(j({}), 'normal', { tormenta: true }).ganhoPV, 2);
 });
 
 // ---------- correções da revisão de regras (specs/regras-sessao.md) ----------

@@ -101,7 +101,7 @@
     document.title = s.nome + ' · Jogadores';
     raiz.innerHTML = `<div class="d-raiz">
       <header class="d-topo"><h1>${esc(s.nome)}</h1>
-        <div class="d-info">${emCombate ? `<span class="gl">${ESPADAS}</span> Rodada ${cb.rodada}` : `Dia ${s.dia || 1}`}</div></header>
+        <div class="d-info">${emCombate ? `<span class="gl">${ESPADAS}</span> Rodada ${cb.rodada}` : ''}</div></header>
       <div class="d-corpo">${emCombate ? htmlCombate(s) : htmlGrupo(s)}</div></div>`;
     ajustarDensidade();
   }

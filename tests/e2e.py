@@ -119,13 +119,13 @@ try:
         gm.keyboard.press('Escape')
 
         # ---------- descanso ----------
-        gm.click('.barra-acoes [data-a=descanso]'); gm.click('[data-tipo=confortavel]')
-        gm.check(f'[data-cuid="{brom}"]')
+        gm.click('.barra-acoes [data-a=descanso]'); gm.click('[data-todos=confortavel]')
+        gm.check(f'[data-m=cuidados][data-id="{brom}"]')
+        gm.screenshot(path=f'{SHOTS}/gm-descanso-1366.png')
         gm.click('#b-desc')
         bs = achar('Brom')
         ok(bs['pv']['atual'] == -3 + 10 + 5, f'descanso confortável + cuidados: Brom a {bs["pv"]["atual"]} PV')
         ok(conds('Brom') == ['fatigado'], 'Brom acordou; fatigado da fome continua')
-        ok(estado()['dia'] == 2, 'dia avançou')
 
         # ---------- combate: 3 goblins + 1 oculto, surpresa ----------
         gm.click('.seg [data-v=combate]')

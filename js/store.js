@@ -18,7 +18,7 @@
 
   function estadoInicial(nome) {
     return {
-      v: 1, rev: 0, nome: nome || 'Nova mesa', modo: 'grupo', dia: 1,
+      v: 1, rev: 0, nome: nome || 'Nova mesa', modo: 'grupo',
       jogadores: [],
       combate: {
         ativo: false, rodada: 0, turno: 0, ordem: [], inis: {}, inimigos: [],
@@ -40,6 +40,7 @@
       defesa: n('defesa', 10), iniciativa: n('iniciativa', 0),
       dinheiro: (d.dinheiro === undefined || d.dinheiro === '' || isNaN(+d.dinheiro)) ? 0 : Math.round(+d.dinheiro * 100) / 100, racoes: n('racoes', 0), diasSemComer: n('diasSemComer', 0),
       falhasFome: n('falhasFome', 0), morto: d.morto || null,
+      poderes: Object.assign({}, d.poderes || {}),
       condicoes: d.condicoes || []
     };
   }
@@ -50,7 +51,7 @@
     const s = Object.assign(base, e || {});
     s.combate = Object.assign(estadoInicial().combate, s.combate || {});
     if (!Array.isArray(s.combate.surpreendidos)) s.combate.surpreendidos = [];
-    s.jogadores = (s.jogadores || []).map(j => Object.assign({ dinheiro: 0, racoes: 0, diasSemComer: 0, falhasFome: 0, morto: null, condicoes: [] }, j));
+    s.jogadores = (s.jogadores || []).map(j => Object.assign({ dinheiro: 0, racoes: 0, diasSemComer: 0, falhasFome: 0, morto: null, condicoes: [], poderes: {} }, j));
     s.combate.inimigos = (s.combate.inimigos || []).map(i => Object.assign({ visivel: true, condicoes: [] }, i));
     s.log = Array.isArray(s.log) ? s.log : [];
     s.recentes = Array.isArray(s.recentes) ? s.recentes : [];
@@ -166,7 +167,7 @@
       const i = s.jogadores.findIndex(j => j.id === p.id);
       if (i < 0) { const j = novoJogador(p); s.jogadores.push(j); log(s, j.nome + ' entrou no grupo'); return; }
       const velho = s.jogadores[i];
-      const j = novoJogador(Object.assign({}, p, { condicoes: velho.condicoes, falhasFome: velho.falhasFome, morto: 'morto' in p ? p.morto : velho.morto }));
+      const j = novoJogador(Object.assign({}, p, { condicoes: velho.condicoes, falhasFome: velho.falhasFome, poderes: p.poderes || velho.poderes, morto: 'morto' in p ? p.morto : velho.morto }));
       s.jogadores[i] = j;
     },
     removerJogador(s, p) {
@@ -223,18 +224,23 @@
     },
     rmCondicao(s, p) { const c = achar(s, p.id); if (c) c.condicoes = c.condicoes.filter(x => x.id !== p.uid); },
 
-    /** p: {tipo, cuidados:{id:true}, sopa, tormenta, comer} */
+    /** Descanso individual. p: {membros: {id: {tipo, cuidados, sopa, comer}}, tormenta}.
+     *  Quem não está em `membros` não descansa. Compatível com o formato antigo {tipo, cuidados, sopa, comer}. */
     descanso(s, p) {
+      let membros = p.membros;
+      if (!membros) { membros = {}; s.jogadores.forEach(j => { membros[j.id] = { tipo: p.tipo, cuidados: p.cuidados && p.cuidados[j.id], sopa: p.sopa, comer: p.comer }; }); }
       const linhas = [], sem = [];
       s.jogadores = s.jogadores.map(j => {
-        let r = R.aplicarDescanso(j, p.tipo, { cuidados: p.cuidados && p.cuidados[j.id], sopa: p.sopa, tormenta: p.tormenta });
+        const m = membros[j.id];
+        if (!m || !R.DESCANSO[m.tipo]) return j;
+        const r = R.aplicarDescanso(j, m.tipo, { cuidados: m.cuidados, sopa: m.sopa, tormenta: p.tormenta });
         let jj = r.jogador;
-        if (p.comer) { const a = R.alimentar(jj); jj = a.jogador; if (!a.comeu) sem.push(j.nome); }
-        linhas.push(j.nome + ' +' + r.ganhoPV + ' PV +' + r.ganhoPM + ' PM');
+        if (m.comer) { const a = R.alimentar(jj); jj = a.jogador; if (!a.comeu) sem.push(j.nome); }
+        linhas.push(j.nome + ' (' + R.DESCANSO[r.tipoEfetivo].nome.toLowerCase() + ') +' + r.ganhoPV + ' PV +' + r.ganhoPM + ' PM');
         return jj;
       });
-      s.dia = (s.dia || 1) + 1;
-      log(s, 'Descanso ' + R.DESCANSO[p.tipo].nome.toLowerCase() + ' · ' + linhas.join(' · '));
+      if (!linhas.length) return;
+      log(s, 'Descanso · ' + linhas.join(' · '));
       if (sem.length) log(s, 'Sem ração: ' + sem.join(', '), 'aviso');
     },
     /** p: {ids?} — sem ids, alimenta todos */

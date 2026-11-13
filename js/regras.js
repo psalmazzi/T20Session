@@ -152,8 +152,28 @@
   ];
   const DESCANSO = Object.fromEntries(DESCANSOS.map(d => [d.id, d]));
 
-  /** Recuperação de uma noite. op: {cuidados (Cura CD 15: +nível PV), sopa (Sopa de Peixe: +nível PM), tormenta (metade)}.
-   *  Metade arredonda para baixo (p. 226); livro não dá mínimo (nível 1 ruim = 0). */
+  /** Poderes que mudam o descanso, guardados na ficha (p. 94, 133, 319). */
+  const PODERES_DESCANSO = [
+    { id: 'estoico', nome: 'Estoico', pag: 94, desc: 'condição de descanso sobe uma categoria' },
+    { id: 'vidaRustica', nome: 'Vida Rústica', pag: 94, desc: 'ao relento, recupera no mínimo o nível' },
+    { id: 'descansoNatural', nome: 'Descanso Natural', pag: 133, desc: 'dormir ao relento conta como confortável' },
+    { id: 'imuneTormenta', nome: 'Imune à Tormenta', pag: 319, desc: 'lefeu e lefou: Área de Tormenta não reduz' }
+  ];
+  const ORDEM_DESCANSO = ['ruim', 'normal', 'confortavel', 'luxuosa'];
+
+  /** Categoria efetiva: Descanso Natural troca relento (ruim) por confortável; Estoico sobe uma (até luxuosa). */
+  function tipoEfetivo(tipo, pod) {
+    pod = pod || {};
+    if (tipo === 'sem_sono' || !DESCANSO[tipo]) return tipo;
+    let t = tipo;
+    if (pod.descansoNatural && t === 'ruim') t = 'confortavel';
+    if (pod.estoico) t = ORDEM_DESCANSO[Math.min(ORDEM_DESCANSO.indexOf(t) + 1, 3)];
+    return t;
+  }
+
+  /** Recuperação de uma noite (ordem do descanso.json): categoria → fórmula → extras → Vida Rústica → Tormenta.
+   *  op: {cuidados (Cura CD 15: +nível PV, p. 117), sopa (Sopa de Peixe: +nível PM, p. 162), tormenta (metade, p. 319),
+   *       minimoNivel (Vida Rústica ao relento)}. Metade arredonda para baixo (p. 226). */
   function recuperacaoDescanso(nivel, tipo, op) {
     op = op || {};
     const d = DESCANSO[tipo] || DESCANSO.normal;
@@ -163,21 +183,30 @@
     if (tipo !== 'sem_sono') {
       if (op.cuidados) pv += nivel;
       if (op.sopa) pm += nivel;
+      if (op.minimoNivel) { pv = Math.max(pv, nivel); pm = Math.max(pm, nivel); }
       if (op.tormenta) { pv = Math.floor(pv / 2); pm = Math.floor(pm / 2); }
     }
     return { pv, pm };
   }
 
-  /** Aplica a noite num jogador: soma até o máximo (p. 106); quem estava caído e volta a ≥1 recobra a consciência (p. 237). */
+  /** Aplica a noite num jogador, considerando os poderes da ficha (j.poderes).
+   *  Soma até o máximo (p. 106); quem estava caído e volta a ≥1 recobra a consciência (p. 237). */
   function aplicarDescanso(j, tipo, op) {
-    const r = recuperacaoDescanso(j.nivel, tipo, op);
+    op = op || {};
+    const pod = j.poderes || {};
+    const efetivo = tipoEfetivo(tipo, pod);
+    const r = recuperacaoDescanso(j.nivel, efetivo, {
+      cuidados: op.cuidados, sopa: op.sopa,
+      minimoNivel: !!(pod.vidaRustica && tipo === 'ruim'),
+      tormenta: !!(op.tormenta && !pod.imuneTormenta)
+    });
     const pv = Math.min(j.pv.max, j.pv.atual + r.pv);
     const pm = Math.min(j.pm.max, j.pm.atual + r.pm);
     let condicoes = j.condicoes || [];
     if (j.pv.atual <= 0 && pv >= 1) condicoes = condicoes.filter(c => !(c.cond === 'sangrando' || (c.cond === 'inconsciente' && c.origem !== 'fome')));
     return {
       jogador: Object.assign({}, j, { pv: Object.assign({}, j.pv, { atual: pv }), pm: Object.assign({}, j.pm, { atual: pm }), condicoes }),
-      ganhoPV: pv - j.pv.atual, ganhoPM: pm - j.pm.atual
+      ganhoPV: pv - j.pv.atual, ganhoPM: pm - j.pm.atual, tipoEfetivo: efetivo
     };
   }
 
@@ -251,7 +280,7 @@
   const T20R = {
     CONDICOES, COND, aplicarCondicao, nomeCondicao, curtoCondicao, perigoCondicao, passarRodada, fimDeCena,
     limiarMorte, estadoPV, estaMorto, descricaoInimigo, aplicarDano, aplicarCura, gastarPM, podeGastarPM,
-    DESCANSOS, DESCANSO, recuperacaoDescanso, aplicarDescanso,
+    DESCANSOS, DESCANSO, PODERES_DESCANSO, tipoEfetivo, recuperacaoDescanso, aplicarDescanso,
     cdFome, alimentar, falhaFome, EFEITOS_FOME, d20, d6, rolarIniciativa, ordenarIniciativa
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = T20R;

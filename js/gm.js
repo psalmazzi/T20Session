@@ -150,7 +150,7 @@
     app.innerHTML = `
       <header class="topo">
         <button class="mesa-nome" data-a="renomear" title="Renomear mesa">${esc(s.nome)}</button>
-        <span class="dia"><span class="so-desk">Dia ${s.dia || 1}${cb.ativo ? ' · R' + cb.rodada : ''}</span></span>
+        ${cb.ativo ? `<span class="dia"><span class="so-desk">Rodada ${cb.rodada}</span></span>` : ''}
         <div class="seg" role="tablist">
           <button role="tab" data-a="modo" data-v="grupo" class="${s.modo === 'grupo' ? 'ativa' : ''}"><span class="so-desk">Grupo</span><span class="so-cel">Grupo</span></button>
           <button role="tab" data-a="modo" data-v="combate" class="${s.modo === 'combate' ? 'ativa' : ''}">${cb.ativo ? `<span class="gl-esp">${G.espadas}</span> ` : ''}<span class="so-desk">Combate</span><span class="so-cel">Combate</span></button>
@@ -552,6 +552,9 @@
         ${f('pvMax', 'PV máximo')}${f('pvAtual', 'PV atual')}${f('pmMax', 'PM máximo')}${f('pmAtual', 'PM atual')}
         ${f('dinheiro', 'Tibares (T$)')}${f('racoes', 'Rações')}${f('diasSemComer', 'Dias sem comer')}
       </div>
+      <fieldset class="poderes"><legend>Descanso: raça, origem e poderes</legend>
+        ${R.PODERES_DESCANSO.map(x => `<label class="check" title="${esc(x.desc)} (p. ${x.pag})"><input type="checkbox" name="pod_${x.id}" ${j && j.poderes && j.poderes[x.id] ? 'checked' : ''}> ${esc(x.nome)} <span class="nota">${esc(x.desc)}</span></label>`).join('')}
+      </fieldset>
       ${j && j.morto ? `<label class="check"><input type="checkbox" name="morto" checked> Morto${j.morto === 'fome' ? ' (fome)' : ''}</label>` : ''}
       ${j && s.jogadores.length > 1 ? `<div class="linha-form"><span class="nota">Posição no grupo</span>
         <button type="button" class="btn" data-mover="-1" ${i === 0 ? 'disabled' : ''}><span class="seta">${G.ant}</span> Antes</button>
@@ -564,6 +567,8 @@
     form.onsubmit = ev => {
       ev.preventDefault();
       const d = Object.fromEntries(new FormData(form).entries());
+      d.poderes = {};
+      R.PODERES_DESCANSO.forEach(x => { if (d['pod_' + x.id]) d.poderes[x.id] = true; delete d['pod_' + x.id]; });
       if (j) { d.id = j.id; if (j.morto) d.morto = form.morto.checked ? j.morto : null; }
       acao('salvarJogador', d); fecharModal();
     };
@@ -605,38 +610,62 @@
     };
   }
 
+  /** Descanso individual: cada um entra ou não, com a própria condição; poderes da ficha ajustam a categoria. */
   function modalDescanso() {
     const s = store.estado;
     if (!s.jogadores.length) return;
-    const op = { tipo: 'normal', cuidados: {}, sopa: false, tormenta: false, comer: true };
+    const membros = {};
+    s.jogadores.forEach(j => { membros[j.id] = { on: !R.estaMorto(j), tipo: 'normal', cuidados: false, sopa: false, comer: true }; });
+    let tormenta = false;
     const m = abrirModal('<div id="desc" class="form-col"></div>');
+    m.classList.add('modal-largo');
     const corpo = m.querySelector('#desc');
+    const opcoesTipo = sel => R.DESCANSOS.map(d => `<option value="${d.id}" ${sel === d.id ? 'selected' : ''}>${d.nome}</option>`).join('');
     function desenhar() {
       const linhas = s.jogadores.map(j => {
-        const r = R.aplicarDescanso(j, op.tipo, { cuidados: op.cuidados[j.id], sopa: op.sopa, tormenta: op.tormenta });
-        const comida = op.comer ? (j.racoes > 0 ? `<span class="gl-racao" title="Rações">${IC.racao}</span> ${j.racoes - 1}` : '<span class="txt-aviso">sem ração</span>') : '';
-        return `<tr><td>${esc(j.nome)} <span class="nota">Nv ${j.nivel}</span></td>
-          <td><span class="ganho">+${r.ganhoPV}</span> → ${r.jogador.pv.atual}/${j.pv.max}</td>
-          <td><span class="ganho">+${r.ganhoPM}</span> → ${r.jogador.pm.atual}/${j.pm.max}</td>
-          <td><label class="check" title="Cura CD 15, só treinado: +1 PV por nível (p. 117)"><input type="checkbox" data-cuid="${j.id}" ${op.cuidados[j.id] ? 'checked' : ''} ${op.tipo === 'sem_sono' ? 'disabled' : ''}> Cuidados</label></td>
-          <td>${comida}</td></tr>`;
+        const o = membros[j.id];
+        const r = R.aplicarDescanso(j, o.tipo, { cuidados: o.cuidados, sopa: o.sopa, tormenta });
+        const mudou = o.tipo !== 'sem_sono' && r.tipoEfetivo !== o.tipo;
+        const pods = R.PODERES_DESCANSO.filter(x => j.poderes && j.poderes[x.id]).map(x => x.nome);
+        const comida = o.comer ? (j.racoes > 0 ? `${j.racoes} → ${j.racoes - 1}` : '<span class="txt-aviso">sem ração</span>') : '<span class="nota">não come</span>';
+        const dis = o.on ? '' : 'disabled';
+        return `<tr class="${o.on ? '' : 'fora'}">
+          <td><label class="check"><input type="checkbox" data-m="on" data-id="${j.id}" ${o.on ? 'checked' : ''}> <b>${esc(j.nome)}</b></label>
+            <div class="nota">Nv ${j.nivel}${pods.length ? ' · ' + esc(pods.join(', ')) : ''}</div></td>
+          <td><select data-m="tipo" data-id="${j.id}" ${dis} aria-label="Condição de descanso de ${esc(j.nome)}">${opcoesTipo(o.tipo)}</select>
+            ${mudou && o.on ? `<div class="nota">conta como ${R.DESCANSO[r.tipoEfetivo].nome.toLowerCase()}</div>` : ''}</td>
+          <td>${o.on ? `<span class="ganho">+${r.ganhoPV}</span> → ${r.jogador.pv.atual}/${j.pv.max}` : '—'}</td>
+          <td>${o.on ? `<span class="ganho">+${r.ganhoPM}</span> → ${r.jogador.pm.atual}/${j.pm.max}` : '—'}</td>
+          <td><label class="check" title="Cura CD 15, só treinado: +1 PV por nível (p. 117)"><input type="checkbox" data-m="cuidados" data-id="${j.id}" ${o.cuidados ? 'checked' : ''} ${dis}> Cuidados</label>
+            <label class="check" title="Sopa de Peixe: +1 PM por nível na próxima noite (p. 162)"><input type="checkbox" data-m="sopa" data-id="${j.id}" ${o.sopa ? 'checked' : ''} ${dis}> Sopa</label></td>
+          <td><label class="check"><input type="checkbox" data-m="comer" data-id="${j.id}" ${o.comer ? 'checked' : ''} ${dis}> Ração</label><div class="nota">${o.on ? comida : ''}</div></td></tr>`;
       }).join('');
-      corpo.innerHTML = `<h2>Descanso do grupo · fim do dia ${s.dia || 1}</h2>
-        <div class="opcoes-descanso">${R.DESCANSOS.map(d => `<button class="opcao ${op.tipo === d.id ? 'ativa' : ''}" data-tipo="${d.id}"><b>${d.nome}</b><small>${d.id === 'sem_sono' ? 'recupera 0' : d.mult === 0.5 ? 'metade do nível' : d.mult === 1 ? '1 × nível' : d.mult + ' × nível'}</small></button>`).join('')}</div>
-        <div class="nota">${esc(R.DESCANSO[op.tipo].desc)}. PV e PM nunca passam do máximo (p. 106).</div>
-        <div class="tabela-rolagem"><table class="previa"><thead><tr><th>Personagem</th><th>PV</th><th>PM</th><th>Cura</th><th>${op.comer ? 'Rações' : ''}</th></tr></thead><tbody>${linhas}</tbody></table></div>
+      const algum = s.jogadores.some(j => membros[j.id].on);
+      corpo.innerHTML = `<h2>Descanso</h2>
+        <div class="linha-form"><span class="nota">Todos em</span>
+          ${R.DESCANSOS.map(d => `<button class="btn peq" data-todos="${d.id}">${d.nome}</button>`).join('')}</div>
+        <div class="tabela-rolagem"><table class="previa"><thead><tr><th>Quem descansa</th><th>Condição</th><th>PV</th><th>PM</th><th>Extras</th><th>Comida</th></tr></thead><tbody>${linhas}</tbody></table></div>
         <div class="linha-form">
-          <label class="check"><input type="checkbox" data-op="comer" ${op.comer ? 'checked' : ''}> Consumir 1 ração de cada</label>
-          <label class="check" title="+1 PM por nível na próxima noite (p. 162)"><input type="checkbox" data-op="sopa" ${op.sopa ? 'checked' : ''}> Sopa de peixe</label>
-          <label class="check" title="Recuperação pela metade (p. 319)"><input type="checkbox" data-op="tormenta" ${op.tormenta ? 'checked' : ''}> Área de Tormenta</label>
+          <label class="check" title="Recuperação pela metade, depois dos outros efeitos (p. 319)"><input type="checkbox" id="d-tormenta" ${tormenta ? 'checked' : ''}> Área de Tormenta</label>
         </div>
-        <div class="nota">O descanso não remove condições pelo livro; use "Limpar condições" se fizer sentido. Quem volta a 1 PV ou mais recobra a consciência (p. 237).</div>
-        <div class="rodape"><button class="btn" data-fechar>Cancelar</button><button class="btn pri" id="b-desc">Descansar</button></div>`;
-      corpo.querySelectorAll('[data-tipo]').forEach(b => b.onclick = () => { op.tipo = b.dataset.tipo; desenhar(); });
-      corpo.querySelectorAll('[data-cuid]').forEach(b => b.onchange = () => { op.cuidados[b.dataset.cuid] = b.checked; desenhar(); });
-      corpo.querySelectorAll('[data-op]').forEach(b => b.onchange = () => { op[b.dataset.op] = b.checked; desenhar(); });
+        <div class="nota">Ruim: metade do nível · Normal: nível · Confortável: 2× · Luxuosa: 3× (p. 106). PV e PM nunca passam do máximo. Estoico, Vida Rústica, Descanso Natural e imunidade à Tormenta vêm da ficha de cada personagem. O descanso não remove condições; quem volta a 1 PV ou mais recobra a consciência (p. 237).</div>
+        <div class="rodape"><button class="btn" data-fechar>Cancelar</button><button class="btn pri" id="b-desc" ${algum ? '' : 'disabled'}>Descansar</button></div>`;
+      corpo.querySelectorAll('[data-m]').forEach(el => el.onchange = () => {
+        const o = membros[el.dataset.id];
+        o[el.dataset.m] = el.type === 'checkbox' ? el.checked : el.value;
+        desenhar();
+      });
+      corpo.querySelectorAll('[data-todos]').forEach(b => b.onclick = () => {
+        s.jogadores.forEach(j => { if (membros[j.id].on) membros[j.id].tipo = b.dataset.todos; });
+        desenhar();
+      });
+      corpo.querySelector('#d-tormenta').onchange = ev => { tormenta = ev.target.checked; desenhar(); };
       corpo.querySelector('[data-fechar]').onclick = fecharModal;
-      corpo.querySelector('#b-desc').onclick = () => { fecharModal(); acao('descanso', op); };
+      corpo.querySelector('#b-desc').onclick = () => {
+        const p = { membros: {}, tormenta };
+        s.jogadores.forEach(j => { const o = membros[j.id]; if (o.on) p.membros[j.id] = { tipo: o.tipo, cuidados: o.cuidados, sopa: o.sopa, comer: o.comer }; });
+        fecharModal(); acao('descanso', p);
+      };
     }
     desenhar();
   }

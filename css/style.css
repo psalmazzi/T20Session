@@ -341,3 +341,13 @@ table.previa th { color: var(--text-3); font-weight: 600; font-size: .78rem; }
   .form-grade { grid-template-columns: repeat(2, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* Descanso individual e poderes da ficha */
+.modal.modal-largo { width: min(900px, 100%); }
+table.previa tr.fora td { opacity: .45; }
+table.previa td { vertical-align: top; }
+table.previa select { min-height: 36px; padding: 4px 8px; width: auto; }
+table.previa .check { display: flex; margin-bottom: 4px; }
+fieldset.poderes { border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+fieldset.poderes legend { color: var(--text-2); font-size: 13px; padding: 0 6px; }
+fieldset.poderes .nota { margin-left: 4px; }
