@@ -385,6 +385,7 @@
           <button class="btn pri" data-a="proximo" title="Próximo turno (seta para a direita)">Próximo turno <span class="seta">${G.prox}</span></button>
           <button class="btn" data-a="novarodada" title="Encerra a rodada agora">Nova rodada</button>
           <button class="btn" data-a="rolar" title="Rola de novo para todos">${IC.dado} Rolar ini</button>
+          <button class="btn" data-a="ordenar" title="Pôr a lista na ordem dos dados rolados na mesa"><span class="gl">&#8645;</span> Ordenar</button>
           <button class="btn" data-a="addini">+ Inimigo</button></span>`
         : `<span class="vez antes">Adicione os inimigos e clique em Iniciar. A iniciativa de todos é rolada sozinha.</span>
           <span class="espaco"></span>
@@ -467,6 +468,7 @@
       case 'anterior': acao('turnoAnterior'); break;
       case 'novarodada': acao('novaRodada'); break;
       case 'rolar': acao('rolarIniciativa'); break;
+      case 'ordenar': modalOrdem(); break;
       case 'sangra-ok': acao('sangramento', { id, passou: true }); break;
       case 'sangra-falha': acao('sangramento', { id, passou: false }); break;
     }
@@ -544,13 +546,15 @@
 
   function htmlMenu(s) {
     const cb = s.combate;
-    const opc = (chave, rot, ajuda) => `<label class="opcao-linha"><input type="checkbox" data-opc="${chave}" ${cb[chave] ? 'checked' : ''}><span><b>${rot}</b><small>${ajuda}</small></span></label>`;
+    const opc = (chave, rot, ajuda, marcado) => `<label class="opcao-linha"><input type="checkbox" data-opc="${chave}" ${(marcado === undefined ? cb[chave] : marcado) ? 'checked' : ''}><span><b>${rot}</b><small>${ajuda}</small></span></label>`;
     return `<div class="folha-topo"><h2>Opções</h2><button class="ic-mini" data-f="fechar" aria-label="Fechar">${G.x}</button></div>
+      <div class="menu-sec"><div class="tit">Iniciativa · regras da casa</div>
+        ${opc('rerrolarCadaRodada', 'Rolar iniciativa a cada rodada', 'Desligado (padrão, livro p. 231): rola-se só no início do combate e a ordem se mantém. Ligado: o app rola de novo para todos no começo de cada rodada; totais digitados são mantidos.')}
+        ${opc('inimigosIndividuais', 'Inimigos rolam individualmente', 'Desligado (padrão, livro p. 231): um único teste para todos os inimigos, com o menor bônus. Ligado: cada inimigo rola o próprio d20, inclusive nas rolagens automáticas.', !cb.inimigosEmGrupo)}
+      </div>
       ${s.modo === 'combate' ? `<div class="menu-sec"><div class="tit">Combate</div>
-        ${opc('rerrolarCadaRodada', 'Rolar iniciativa a cada rodada (regra da casa)', 'Pelo livro, rola-se só no início do combate e a ordem se mantém (p. 231). Valores digitados não são sobrescritos.')}
-        ${opc('inimigosEmGrupo', 'Inimigos fazem um único teste', 'Regra do livro (p. 231): um teste para todos os inimigos, com o menor bônus.')}
         ${opc('mostrarPVInimigos', 'Mostrar PV dos inimigos na tela', 'Desligado, a tela dos jogadores mostra só Ileso / Ferido / Muito ferido / Quase caindo.')}
-        <div class="so-cel menu-botoes"><button class="btn" data-f="acao" data-v="novarodada">Nova rodada</button><button class="btn" data-f="acao" data-v="rolar">${IC.dado} Rolar iniciativa</button></div>
+        <div class="so-cel menu-botoes"><button class="btn" data-f="acao" data-v="novarodada">Nova rodada</button><button class="btn" data-f="acao" data-v="rolar">${IC.dado} Rolar iniciativa</button>${cb.ativo ? '<button class="btn" data-f="acao" data-v="ordenar"><span class="gl">&#8645;</span> Ordenar</button>' : ''}</div>
         ${cb.ativo ? '<button class="btn perigo largo" data-f="encerrar">Encerrar combate</button>' : ''}</div>` : `<div class="menu-sec so-cel"><div class="tit">Grupo</div>
         <div class="menu-botoes"><button class="btn" data-f="acao" data-v="novo">+ Personagem</button><button class="btn" data-f="acao" data-v="limparcond">Limpar condições</button></div></div>`}
       <div class="menu-sec"><div class="tit">Mesa</div>
@@ -589,7 +593,7 @@
         ${termo('T$', 'Tibares, o dinheiro de Arton.')}
         ${termo('Rações', '1 por dia. Sem comer, a partir do 2º dia há teste de Fortitude (p. 319).')}</dl></section>
       <section><div class="tit">Regra da casa</div>
-        <p class="guia-txt">Pelo livro, a iniciativa é rolada <b>uma vez</b> no início do combate e a ordem se mantém (p. 231). Esta mesa ${s.combate.rerrolarCadaRodada ? '<b>rola de novo a cada rodada</b> (regra da casa, ligada)' : 'segue o livro (regra da casa desligada)'}. Troque em ${G.mais} > Combate.</p></section>
+        <p class="guia-txt">Pelo livro, a iniciativa é rolada <b>uma vez</b> no início do combate e a ordem se mantém (p. 231). Esta mesa ${s.combate.rerrolarCadaRodada ? '<b>rola de novo a cada rodada</b> (regra da casa, ligada)' : 'segue o livro (regra da casa desligada)'}. Troque em ${G.mais} > Iniciativa.</p></section>
       <section><div class="tit">Condições comuns</div><dl class="guia-termos guia-cond">
         ${CONDS_GUIA.map(id => R.COND[id]).filter(Boolean).map(c => termo(esc(c.nome), esc(c.curto))).join('')}</dl></section>
       <section><div class="tit">Tela dos jogadores</div>
@@ -662,6 +666,7 @@
         fecharFolha();
         if (v === 'novarodada') acao('novaRodada');
         else if (v === 'rolar') acao('rolarIniciativa');
+        else if (v === 'ordenar') modalOrdem();
         else if (v === 'novo') modalPersonagem();
         else if (v === 'limparcond') acao('limparCondicoesGrupo');
         else if (v === 'refazer') store.refazer();
@@ -829,6 +834,60 @@
         s.jogadores.forEach(j => { const o = membros[j.id]; if (o.on) p.membros[j.id] = { tipo: o.tipo, cuidados: o.cuidados, sopa: o.sopa, comer: o.comer }; });
         fecharModal(); acao('descanso', p);
       };
+    }
+    desenhar();
+  }
+
+  /** Ordem da iniciativa à mão: os dados são rolados na mesa e o mestre ajusta a lista. */
+  function modalOrdem() {
+    const s = store.estado;
+    if (!s.combate.ativo) return;
+    let ordem = S.ordemValida(s).slice();
+    S.combatentes(s).forEach(c => { if (ordem.indexOf(c.id) < 0) ordem.push(c.id); });
+    const totais = {};
+    ordem.forEach(id => { const i = s.combate.inis[id]; totais[id] = i ? i.total : ''; });
+    const m = abrirModal('<div id="ordem" class="form-col"></div>');
+    const corpo = m.querySelector('#ordem');
+    function desenhar(foco) {
+      corpo.innerHTML = `<h2>Ordem da iniciativa</h2>
+        <div class="nota">Rolaram na mesa? Digite os totais e toque em "Ordenar pelos totais", ou use as setas para pôr cada um no lugar. O primeiro da lista age primeiro. Empate pelo livro: maior bônus (p. 231).</div>
+        <ol class="lista-ordem">${ordem.map((id, i) => {
+          const c = S.achar(s, id);
+          return `<li class="${c.tipo}">
+            <span class="pos">${i + 1}</span>
+            <span class="quem"><b>${esc(c.nome)}</b><small>${c.tipo === 'jogador' ? 'Jogador' : 'Inimigo'} · bônus ${sinal(c.iniciativa | 0)}</small></span>
+            <input type="number" inputmode="numeric" data-tot="${id}" value="${esc(totais[id])}" aria-label="Total de ${esc(c.nome)}" placeholder="total">
+            <button class="btn ic-btn" data-mv="-1" data-id="${id}" ${i === 0 ? 'disabled' : ''} aria-label="Subir ${esc(c.nome)}" title="Subir">&#8593;</button>
+            <button class="btn ic-btn" data-mv="1" data-id="${id}" ${i === ordem.length - 1 ? 'disabled' : ''} aria-label="Descer ${esc(c.nome)}" title="Descer">&#8595;</button>
+          </li>`;
+        }).join('')}</ol>
+        <div class="linha-form"><button class="btn" id="o-total">Ordenar pelos totais</button></div>
+        <div class="rodape"><button class="btn" data-fechar>Cancelar</button><button class="btn pri" id="o-ok">Salvar ordem</button></div>`;
+      corpo.querySelectorAll('[data-tot]').forEach(el => el.oninput = () => { totais[el.dataset.tot] = el.value; });
+      corpo.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => {
+        const id = b.dataset.id, d = +b.dataset.mv;
+        const i = ordem.indexOf(id), k = i + d;
+        if (k < 0 || k >= ordem.length) return;
+        ordem[i] = ordem[k]; ordem[k] = id;
+        desenhar({ id, d });
+      });
+      corpo.querySelector('#o-total').onclick = () => {
+        const cs = ordem.map(id => S.achar(s, id));
+        const inis = {};
+        cs.forEach(c => { const t = parseInt(totais[c.id], 10); inis[c.id] = { total: isNaN(t) ? -99 : t, desempate: -ordem.indexOf(c.id) }; });
+        ordem = R.ordenarIniciativa(cs, inis);
+        desenhar();
+      };
+      corpo.querySelector('[data-fechar]').onclick = fecharModal;
+      corpo.querySelector('#o-ok').onclick = () => {
+        const t = {};
+        Object.keys(totais).forEach(id => { if (totais[id] !== '' && !isNaN(parseInt(totais[id], 10))) t[id] = totais[id]; });
+        fecharModal(); acao('definirOrdem', { ordem, totais: t });
+      };
+      if (foco) { // mantém o foco na seta usada, para mover várias casas seguidas pelo teclado
+        const b = corpo.querySelector(`[data-mv="${foco.d}"][data-id="${foco.id}"]`) || corpo.querySelector(`[data-mv="${-foco.d}"][data-id="${foco.id}"]`);
+        if (b) b.focus();
+      }
     }
     desenhar();
   }

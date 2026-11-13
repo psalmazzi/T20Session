@@ -347,4 +347,43 @@ t('código do link: 14 caracteres sem ambíguos', () => {
     assert.ok(/^[a-hjkmnp-z2-9]+$/.test(c), c);
   }
 });
+
+t('padrões: iniciativa pelo livro (rola uma vez, inimigos em grupo)', () => {
+  const s = S.estadoInicial('t');
+  assert.strictEqual(s.combate.rerrolarCadaRodada, false);
+  assert.strictEqual(s.combate.inimigosEmGrupo, true);
+  S.ACOES.opcaoCombate(s, { chave: 'inimigosIndividuais', valor: true });
+  assert.strictEqual(s.combate.inimigosEmGrupo, false);
+});
+t('ordem à mão: definirOrdem mantém a ordem, a vez e os totais; novos entram no fim', () => {
+  const s = S.estadoInicial('t'); const A = S.ACOES;
+  A.salvarJogador(s, { nome: 'Ana', iniciativa: 1 }); A.salvarJogador(s, { nome: 'Bia', iniciativa: 5 });
+  A.addInimigo(s, { nome: 'Orc', pv: 10, iniciativa: 3 });
+  A.iniciarCombate(s, {}, () => 0.5);
+  const [ana, bia] = s.jogadores.map(j => j.id), orc = s.combate.inimigos[0].id;
+  const vez = S.daVez(s);
+  A.definirOrdem(s, { ordem: [orc, ana, bia], totais: { [ana]: 7 } });
+  assert.deepStrictEqual(s.combate.ordem, [orc, ana, bia]);
+  assert.strictEqual(S.daVez(s), vez);
+  assert.strictEqual(s.combate.inis[ana].total, 7);
+  assert.strictEqual(s.combate.inis[ana].manual, true);
+  A.setIniciativa(s, { id: bia, total: 30 });            // digitar total não desfaz a ordem manual
+  assert.deepStrictEqual(s.combate.ordem, [orc, ana, bia]);
+  A.addInimigo(s, { nome: 'Lobo', pv: 5, iniciativa: 9 }, () => 0.99);
+  assert.strictEqual(s.combate.ordem[3], s.combate.inimigos[1].id);
+  A.rolarIniciativa(s, {}, () => 0.5);                   // rolar de novo volta à ordem automática
+  assert.strictEqual(s.combate.ordemManual, false);
+});
+t('inimigos individuais: cada inimigo rola o próprio d20', () => {
+  const cs = [{ id: 'a', tipo: 'inimigo', iniciativa: 0 }, { id: 'b', tipo: 'inimigo', iniciativa: 0 }];
+  let n = 0; const rng = () => [0.1, 0.5, 0.9, 0.5][n++ % 4];
+  const r = R.rolarIniciativa(cs, { inimigosEmGrupo: false }, rng);
+  assert.notStrictEqual(r.a.d20, r.b.d20);
+});
+t('mesas antigas: rolagem a cada rodada desligada uma vez; escolha depois é respeitada', () => {
+  const velho = S.normalizar({ jogadores: [], combate: { rerrolarCadaRodada: true } });
+  assert.strictEqual(velho.combate.rerrolarCadaRodada, false);
+  velho.combate.rerrolarCadaRodada = true;
+  assert.strictEqual(S.normalizar(JSON.parse(JSON.stringify(velho))).combate.rerrolarCadaRodada, true);
+});
 console.log(ok + ' testes ok');

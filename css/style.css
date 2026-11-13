@@ -476,3 +476,14 @@ details.poderes .poderes-lista { display: flex; flex-direction: column; gap: 6px
 .link-btn { background: none; border: 0; color: var(--text-2); font-size: .9rem; text-decoration: underline; text-underline-offset: 3px; padding: 6px; align-self: center; cursor: pointer; }
 .link-btn:hover { color: var(--text); }
 .erro .ok { color: var(--ok); }
+
+/* Ordem da iniciativa à mão */
+.lista-ordem { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 56vh; overflow: auto; }
+.lista-ordem li { display: grid; grid-template-columns: 28px 1fr 72px 44px 44px; gap: 8px; align-items: center; background: var(--surface-2); border-radius: 12px; padding: 6px 8px 6px 10px; border-left: 3px solid var(--border-strong); }
+.lista-ordem li.jogador { border-left-color: var(--pm); }
+.lista-ordem li.inimigo { border-left-color: var(--pv); }
+.lista-ordem .pos { color: var(--text-3); font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.lista-ordem .quem b { display: block; }
+.lista-ordem .quem small { color: var(--text-3); font-size: 12px; }
+.lista-ordem input { text-align: center; min-height: 40px; padding: 4px; }
+.lista-ordem .btn { min-height: 40px; min-width: 44px; padding: 0; justify-content: center; font-size: 18px; }

@@ -60,7 +60,9 @@ O botão **Compartilhar** (no celular, em **⋯**) gera um link para os jogadore
 | Duração em rodadas | Termina no início do turno de quem estava na vez quando a condição foi aplicada | 232 |
 | Condições | 35 condições do livro; repetir uma que agrava troca pela mais grave (com a maior duração); terminam no fim da cena (encerrar combate) salvo "indefinida" | 394–395 |
 
-**Regra da casa:** o livro rola a iniciativa **uma vez** por combate e a ordem se mantém (p. 231). O app vem com **"Rolar iniciativa a cada rodada (regra da casa)"** ligado, a pedido do mestre; desligue no menu **⋯** do combate para seguir o livro. O total pode ser digitado quando o jogador rola o próprio dado, e a nova rolagem de cada rodada não sobrescreve valores digitados.
+**Iniciativa:** o app segue o livro por padrão: rola **uma vez** no início do combate, a ordem se mantém e os inimigos fazem **um único teste** com o menor bônus (p. 231). Para dados rolados na mesa, use **⇅ Ordenar** no combate: digite os totais e toque em "Ordenar pelos totais", ou ajuste com as setas; quem entra depois vai para o fim da lista.
+
+**Regras da casa** (em **⋯ → Iniciativa**, desligadas por padrão): **Rolar iniciativa a cada rodada** (o app rola de novo para todos no começo de cada rodada, mantendo totais digitados) e **Inimigos rolam individualmente** (cada inimigo rola o próprio d20, inclusive nas rolagens automáticas).
 
 Mesas salvas por versões anteriores continuam abrindo: campos novos recebem o valor padrão.
 

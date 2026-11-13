@@ -22,7 +22,7 @@
       jogadores: [],
       combate: {
         ativo: false, rodada: 0, turno: 0, ordem: [], inis: {}, inimigos: [],
-        rerrolarCadaRodada: true, inimigosEmGrupo: true, mostrarPVInimigos: false, surpreendidos: []
+        rerrolarCadaRodada: false, inimigosEmGrupo: true, ordemManual: false, padraoIni: 2, mostrarPVInimigos: false, surpreendidos: []
       },
       recentes: [], // inimigos usados antes, para adicionar rápido
       log: [],
@@ -52,6 +52,8 @@
     const s = Object.assign(base, e || {});
     s.combate = Object.assign(estadoInicial().combate, s.combate || {});
     if (!Array.isArray(s.combate.surpreendidos)) s.combate.surpreendidos = [];
+    // padrão da iniciativa mudou para o livro (rola uma vez): aplica uma única vez nas mesas antigas
+    if (!(e && e.combate && e.combate.padraoIni === 2)) { s.combate.rerrolarCadaRodada = false; s.combate.padraoIni = 2; }
     s.jogadores = (s.jogadores || []).map(j => Object.assign({ dinheiro: 0, racoes: 0, diasSemComer: 0, falhasFome: 0, morto: null, condicoes: [], poderes: {} }, j));
     s.combate.inimigos = (s.combate.inimigos || []).map(i => Object.assign({ visivel: true, condicoes: [] }, i));
     s.log = Array.isArray(s.log) ? s.log : [];
@@ -157,7 +159,13 @@
     if (manterManuais) Object.keys(velhos).forEach(id => { if (velhos[id] && velhos[id].manual && novos[id]) novos[id] = velhos[id]; });
     s.combate.inis = novos;
     s.combate.ordem = R.ordenarIniciativa(cs, s.combate.inis);
+    s.combate.ordemManual = false;
     s.combate.turno = primeiroValido(s, 0);
+  }
+  /** Ordem ajustada à mão: quem entrar depois vai para o fim (não reordena os outros). */
+  function inserirNaOrdem(s, ids) {
+    if (s.combate.ordemManual) s.combate.ordem = ordemValida(s).concat(ids.filter(id => s.combate.ordem.indexOf(id) < 0));
+    else s.combate.ordem = R.ordenarIniciativa(combatentes(s), s.combate.inis);
   }
   function primeiroValido(s, desde) {
     const o = ordemValida(s);
@@ -324,7 +332,7 @@
         const inis = R.rolarIniciativa(novos, {}, rng);
         novos.forEach(n => { n.entrouNaRodada = s.combate.rodada; });
         Object.assign(s.combate.inis, inis);
-        s.combate.ordem = R.ordenarIniciativa(combatentes(s), s.combate.inis);
+        inserirNaOrdem(s, novos.map(n => n.id));
         const k = s.combate.ordem.indexOf(vez); if (k >= 0) s.combate.turno = k;
       }
       log(s, 'Entrou: ' + novos.map(n => n.nome).join(', '));
@@ -355,7 +363,7 @@
       const total = Math.floor(+p.total);
       if (isNaN(total)) return;
       s.combate.inis[p.id] = { d20: total - (c.iniciativa | 0), total, mod: c.iniciativa | 0, desempate: (s.combate.inis[p.id] || {}).desempate || Math.random(), manual: true };
-      s.combate.ordem = R.ordenarIniciativa(combatentes(s), s.combate.inis);
+      if (!s.combate.ordemManual) s.combate.ordem = R.ordenarIniciativa(combatentes(s), s.combate.inis);
       const k = s.combate.ordem.indexOf(vez); if (k >= 0) s.combate.turno = k;
     },
     /** Avança a vez. As posições percorridas (inclusive as puladas) contam como início de turno para as durações (p. 232). */
@@ -385,7 +393,30 @@
       const ex = inicioDeTurno(s, o.slice(s.combate.turno + 1));
       return { novaRodada: ex.concat(novaRodada(s, rng)) };
     },
-    opcaoCombate(s, p) { if (['rerrolarCadaRodada', 'inimigosEmGrupo', 'mostrarPVInimigos'].indexOf(p.chave) >= 0) s.combate[p.chave] = !!p.valor; },
+    opcaoCombate(s, p) {
+      if (p.chave === 'inimigosIndividuais') { s.combate.inimigosEmGrupo = !p.valor; return; } // regra da casa = inverso do livro
+      if (['rerrolarCadaRodada', 'inimigosEmGrupo', 'mostrarPVInimigos'].indexOf(p.chave) >= 0) s.combate[p.chave] = !!p.valor;
+    },
+    /** Ordem da iniciativa definida pelo mestre (dados rolados na mesa).
+     *  p: {ordem: [ids na ordem de ação], totais?: {id: número}}. A vez continua com quem estava. */
+    definirOrdem(s, p) {
+      const validos = new Set(combatentes(s).map(c => c.id));
+      const ordem = (p.ordem || []).filter((id, i, a) => validos.has(id) && a.indexOf(id) === i);
+      combatentes(s).forEach(c => { if (ordem.indexOf(c.id) < 0) ordem.push(c.id); });
+      const vez = daVez(s);
+      Object.keys(p.totais || {}).forEach(id => {
+        const c = achar(s, id); const t = Math.floor(+p.totais[id]);
+        if (!c || isNaN(t)) return;
+        const velho = s.combate.inis[id] || {};
+        if (velho.total === t) return;
+        s.combate.inis[id] = { d20: t - (c.iniciativa | 0), total: t, mod: c.iniciativa | 0, desempate: velho.desempate || Math.random(), manual: true };
+      });
+      s.combate.ordem = ordem;
+      s.combate.ordemManual = true;
+      const k = ordem.indexOf(vez);
+      s.combate.turno = k >= 0 ? k : Math.max(0, primeiroValido(s, 0));
+      log(s, 'Ordem da iniciativa ajustada: ' + ordem.map(id => achar(s, id).nome).join(', '));
+    },
     /** Fim do combate = fim da cena: condições terminam (p. 394). */
     encerrarCombate(s, p) {
       const derrotados = s.combate.inimigos.filter(i => i.pv.atual <= 0).length;
