@@ -64,7 +64,7 @@ label.check input, .opcao-linha input { width: 18px; height: 18px; accent-color:
 
 /* ---------- Cabeçalho (1 linha, 52 px) ---------- */
 .topo { position: sticky; top: 0; z-index: 20; height: 52px; display: flex; align-items: center; gap: 8px; padding: 0 var(--lado); background: var(--hdr); border-bottom: 1px solid var(--hdr-borda); }
-.mesa-nome { font-weight: 600; font-size: 1.02rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 26vw; }
+.mesa-nome { font-weight: 600; font-size: 1.02rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 26vw; min-width: 3em; flex: 0 1 auto; }
 .topo .dia { color: var(--text-2); font-size: .9rem; white-space: nowrap; margin-right: 8px; font-variant-numeric: tabular-nums; }
 .topo .espaco { flex: 1; }
 .seg { display: inline-flex; background: var(--hdr-ctl); border-radius: var(--r-btn); padding: 3px; gap: 2px; }
@@ -72,9 +72,19 @@ label.check input, .opcao-linha input { width: 18px; height: 18px; accent-color:
 .seg button.ativa { background: var(--surface-3); color: var(--text); }
 .seg .gl-esp { color: var(--text-2); }
 .seg button.ativa .gl-esp { color: var(--accent); }
-.sync { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); display: inline-block; margin: 0 6px; flex: none; }
-.sync.local { background: var(--text-3); }
-.sync.erro { background: var(--danger); }
+.sync { display: inline-flex; align-items: center; gap: 6px; margin: 0 4px; flex: none; font-size: .8rem; color: var(--text-3); white-space: nowrap; }
+.sync i { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); flex: none; }
+.sync.local i { background: var(--text-3); }
+.sync.erro i { background: var(--danger); }
+.sync.erro .sync-rot { color: var(--danger); }
+.ic.rotulado .rot-larga { font-size: .9rem; font-weight: 600; }
+.topo > * { flex-shrink: 0; }
+.topo > .mesa-nome { flex-shrink: 1; }
+.ic { white-space: nowrap; }
+@media (max-width: 900px) { .ic.hist .so-desk { display: none !important; } }
+.ic.ligado { color: var(--accent); }
+@media (max-width: 1199px) { .ic .rot-larga { display: none; } }
+@media (max-width: 999px) { .topo .dia { display: none; } }
 
 main { padding: 16px var(--lado) 32px; max-width: 1640px; margin: 0 auto; }
 .barra-acoes { display: flex; gap: 8px; align-items: center; margin-bottom: var(--gap); }
@@ -150,7 +160,7 @@ button.chip { padding: 4px 12px; }
 .lembrete b { color: #fff; }
 .lembrete .btn { min-height: 40px; }
 .lista-ini { display: flex; flex-direction: column; gap: 8px; }
-.linha-ini { display: grid; grid-template-columns: 58px minmax(120px, .8fr) minmax(250px, 1.3fr) minmax(250px, 1.3fr) minmax(150px, 1.1fr) 128px; gap: 14px; align-items: center; background: var(--surface); border-radius: var(--r); border-left: 3px solid var(--border-strong); padding: 6px 12px 6px 9px; min-height: 64px; }
+.linha-ini { display: grid; grid-template-columns: 58px minmax(120px, var(--fr-nome, .8fr)) minmax(250px, 1.3fr) minmax(250px, 1.3fr) minmax(150px, var(--fr-cond, 1.1fr)) var(--col-acoes, 128px); gap: 14px; align-items: center; background: var(--surface); border-radius: var(--r); border-left: 3px solid var(--border-strong); padding: 6px 12px 6px 9px; min-height: 64px; }
 .linha-ini.jogador { border-left-color: var(--pm); }
 .linha-ini.inimigo { border-left-color: var(--pv); }
 .linha-ini.vez { box-shadow: inset 0 0 0 2px var(--accent); }
@@ -270,7 +280,7 @@ table.previa th { color: var(--text-3); font-weight: 600; font-size: .78rem; }
 
 /* ---------- Login / mesas ---------- */
 .centro { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: var(--lado); }
-.caixa { background: var(--surface); border-radius: var(--r); padding: 24px; width: min(420px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.caixa { background: var(--surface); border-radius: var(--r); padding: 24px; width: min(460px, 100%); display: flex; flex-direction: column; gap: 12px; }
 .caixa h1 { color: var(--accent); font-size: 1.6rem; text-align: center; }
 .caixa .sub { text-align: center; color: var(--text-2); margin-top: -6px; }
 .erro { color: var(--danger); font-size: .9rem; }
@@ -281,8 +291,9 @@ table.previa th { color: var(--text-3); font-weight: 600; font-size: .78rem; }
 .lista-mesas .btn { min-height: 40px; }
 
 /* ---------- Telas médias: a linha de combate quebra em duas ---------- */
-@media (max-width: 1180px) and (min-width: 721px) {
-  .linha-ini { grid-template-columns: 58px minmax(130px, 1fr) minmax(250px, 1.4fr) 128px; }
+@media (max-width: 1340px) and (min-width: 721px) {
+  /* PV (barra + número + − valor +) precisa de ~300 px; abaixo de 1340 px a linha quebra em duas */
+  .linha-ini { grid-template-columns: 58px minmax(110px, .6fr) minmax(300px, 1.4fr) 128px; }
   .linha-ini .ini-pm { grid-column: 3; }
   .linha-ini .ini-cond { grid-column: 2; grid-row: 2; }
   .linha-ini .ini-acoes { grid-column: 4; grid-row: 1; }
@@ -351,3 +362,113 @@ table.previa .check { display: flex; margin-bottom: 4px; }
 fieldset.poderes { border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 fieldset.poderes legend { color: var(--text-2); font-size: 13px; padding: 0 6px; }
 fieldset.poderes .nota { margin-left: 4px; }
+
+/* ---------- Modo Dicas (specs/ux-novatos.md): .dica só aparece com body.dicas ---------- */
+body:not(.dicas) .dica { display: none !important; }
+body.dicas .sem-dica { display: none !important; }
+.centro-txt { text-align: center; }
+.nota-centro { text-align: center; margin-top: 10px; }
+.legenda { font-size: .75rem; color: var(--text-3); margin: -4px 0 8px; }
+.legenda span { margin-left: 8px; }
+.legenda-media { display: none; }
+.legenda-ini { display: grid; grid-template-columns: 58px minmax(120px, var(--fr-nome, .8fr)) minmax(250px, 1.3fr) minmax(250px, 1.3fr) minmax(150px, var(--fr-cond, 1.1fr)) var(--col-acoes, 128px); gap: 14px; align-items: center; height: 24px; padding: 0 12px 0 12px; font-size: .75rem; color: var(--text-3); white-space: nowrap; }
+.legenda-ini > span:first-child { text-align: center; }
+.legenda-ini b { font-weight: 600; margin-right: 6px; letter-spacing: .04em; }
+.legenda-ini .t-pv { color: var(--pv); } .legenda-ini .t-pm { color: var(--pm); }
+/* com dicas o olho ganha texto: a coluna de ações cresce e a de condições cede (PV e PM não encolhem) */
+body.dicas .linha-ini, body.dicas .legenda-ini { --col-acoes: 184px; --fr-nome: .7fr; --fr-cond: .8fr; }
+body.dicas .ic-mini.olho { width: auto; padding: 0 10px; display: inline-flex; gap: 6px; font-size: .8rem; font-weight: 600; }
+.olho-rot { min-width: 3.4em; text-align: left; }
+.nota-rodada { color: var(--text-3); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.painel-turno .vez.antes { flex: 0 1 auto; min-width: 0; }
+.ini-num small { font-size: .68rem; }
+/* nome do combatente: não é botão; "Passar a vez para cá" aparece ao passar o mouse na linha */
+.sub-slot { display: flex; align-items: center; min-height: 26px; min-width: 0; }
+.dar-vez { display: none; min-height: 26px; padding: 0 10px; border-radius: 8px; font-size: .78rem; font-weight: 600; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--border-strong); white-space: nowrap; }
+.dar-vez:hover { color: var(--text); background: var(--surface-2); }
+@media (hover: hover) and (min-width: 721px) {
+  .linha-ini:hover .dar-vez, .linha-ini:focus-within .dar-vez { display: inline-flex; align-items: center; }
+  .linha-ini:hover .sub-slot:has(.dar-vez) .sub, .linha-ini:focus-within .sub-slot:has(.dar-vez) .sub { display: none; }
+}
+.linha-vazia { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 8px 8px 8px 16px; border-radius: var(--r); border: 1px dashed var(--border-strong); color: var(--text-2); min-height: 56px; }
+/* Primeiros passos */
+.passos { background: var(--surface); border-radius: var(--r); padding: 12px 16px; margin-bottom: var(--gap); display: flex; flex-direction: column; gap: 4px; }
+.passos .espaco { flex: 1; }
+.passos-topo { display: flex; align-items: center; gap: 10px; min-height: 36px; }
+.passo { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--border); }
+.passo-n { width: 28px; height: 28px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--border-strong); color: var(--text-2); display: inline-grid; place-items: center; font-weight: 700; font-size: .86rem; flex: none; }
+.passo-txt { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.passo .btn { flex: none; }
+.passo.feito .passo-n { color: var(--ok); box-shadow: inset 0 0 0 1.5px var(--ok); }
+.passo.feito .passo-txt b { color: var(--text-3); text-decoration: line-through; font-weight: 600; }
+.passos.curto { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 6px 8px 6px 16px; }
+.passos-tit { color: var(--text-2); font-size: .9rem; }
+.passos-tit b { color: var(--text); }
+button.link { color: var(--accent); font-weight: 600; font-size: .9rem; min-height: 36px; text-align: left; }
+button.link:hover { text-decoration: underline; }
+.dica-toque { margin: 0; font-size: .8rem; color: var(--text-3); text-align: center; }
+/* Menu: Ajuda / Guia rápido */
+.gl-ajuda { width: 1.25rem; height: 1.25rem; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; color: var(--text-2); display: inline-grid; place-items: center; font-size: .78rem; font-weight: 700; }
+.guia { display: flex; flex-direction: column; gap: 16px; }
+.guia section { display: flex; flex-direction: column; gap: 6px; }
+.guia .tit { font-size: .75rem; letter-spacing: .04em; color: var(--text-3); font-weight: 600; text-transform: uppercase; }
+.guia-passos { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; font-size: .9rem; color: var(--text-2); }
+.guia-passos b, .guia-txt b { color: var(--text); }
+.guia-txt { margin: 0; font-size: .9rem; color: var(--text-2); }
+.guia-termos { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; font-size: .88rem; }
+.guia-termos dt { font-weight: 700; color: var(--text); }
+.guia-termos dd { margin: 0; color: var(--text-2); }
+.guia-cond dt { color: var(--warn); font-weight: 600; }
+/* Modal Iniciar combate */
+.tit-lista { font-weight: 700; }
+.atalhos { display: flex; gap: 6px; flex-wrap: wrap; }
+.atalhos .btn.ativo { background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.tit-grupo { font-size: .75rem; letter-spacing: .04em; color: var(--text-3); font-weight: 600; text-transform: uppercase; margin: 6px 0 2px; }
+.linha-surp { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(150px, auto); gap: 12px; align-items: center; background: var(--surface-2); border-radius: var(--r-btn); padding: 4px 12px 4px 12px; border-left: 3px solid var(--border-strong); min-height: 52px; }
+.linha-surp.jogador { border-left-color: var(--pm); } .linha-surp.inimigo { border-left-color: var(--pv); }
+.linha-surp .nome { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg-surp { background: var(--bg); }
+.seg-surp button { min-height: 38px; min-width: 92px; }
+.seg-surp button[data-v=surpreso].ativa { color: var(--warn); }
+.aviso-surp { color: var(--warn); font-size: .8rem; }
+.resumo-surp { color: var(--text-2); font-size: .9rem; }
+.resumo-surp.tem { color: var(--warn); }
+/* Modal Personagem / Condição / Descanso */
+.grupo-campos { display: flex; flex-direction: column; gap: 6px; }
+.tit-campos, .tit-passo { font-size: .8rem; color: var(--text-2); font-weight: 600; }
+details.poderes { border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; }
+details.poderes summary { cursor: pointer; color: var(--text-2); font-size: .9rem; padding: 4px 0; }
+details.poderes .poderes-lista { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.th-nota { font-weight: 400; font-size: .72rem; }
+.vazio-hist { padding: 12px 0; }
+.comp-gerir { margin-top: 4px; }
+#comp-link { font-size: .86rem; color: var(--text-2); }
+
+@media (max-width: 1340px) {
+  .legenda-ini { display: none !important; }
+  .legenda-media { display: block; }
+}
+@media (max-width: 1180px) { .nota-rodada { display: none !important; } }
+@media (max-width: 1340px) and (min-width: 721px) {
+  /* sem espaço para o texto do olho: só o ícone (o title explica) */
+  .olho-rot { display: none; }
+  body.dicas .ic-mini.olho { width: 40px; padding: 0; justify-content: center; }
+}
+@media (max-width: 720px) {
+  .passo { flex-wrap: wrap; }
+  .passo .btn { width: 100%; }
+  .passos.curto .btn { margin-left: auto; }
+  .linha-surp { grid-template-columns: 1fr; gap: 6px; padding: 8px 12px; }
+  .seg-surp { display: flex; width: 100%; }
+  .seg-surp button { flex: 1; min-height: 44px; }
+  .linha-surp .aviso-surp:empty { display: none; }
+  .painel-turno .vez.antes { white-space: normal; font-size: .9rem; padding: 4px 0; }
+  .barra-cel .btn.inimigo-cel { flex: 0 0 112px; }
+  .linha-vazia { padding-left: 14px; }
+}
+#f-mesa input::placeholder { font-size: .9rem; }
+.form-grade.cinco { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 720px) {
+  .form-grade.cinco { grid-template-columns: repeat(2, 1fr); }
+  .painel-turno .grupo-btn [data-a=iniciar] { display: none; }
+}

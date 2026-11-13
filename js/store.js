@@ -25,7 +25,8 @@
         rerrolarCadaRodada: true, inimigosEmGrupo: true, mostrarPVInimigos: false, surpreendidos: []
       },
       recentes: [], // inimigos usados antes, para adicionar rápido
-      log: []
+      log: [],
+      ui: { passos: { tela: false, combate: false, dispensado: false } }
     };
   }
 
@@ -55,6 +56,28 @@
     s.combate.inimigos = (s.combate.inimigos || []).map(i => Object.assign({ visivel: true, condicoes: [] }, i));
     s.log = Array.isArray(s.log) ? s.log : [];
     s.recentes = Array.isArray(s.recentes) ? s.recentes : [];
+    // ui: estado da interface que pertence à mesa (Primeiros passos). Fora do desfazer.
+    s.ui = Object.assign({}, s.ui);
+    s.ui.passos = Object.assign({ tela: false, combate: false, dispensado: false }, s.ui.passos);
+    return s;
+  }
+
+  /** Cópia para quem não é o mestre (link público): sem inimigos ocultos, sem histórico nem recentes.
+   *  Os ids dos ocultos ficam em combate.ocultos para a vez continuar certa ("???" na tela).
+   *  Mesmo recorte da função mesa_publica (supabase/002_compartilhar.sql). */
+  function estadoPublico(e) {
+    if (!e) return e;
+    const s = clone(e);
+    delete s.log; delete s.recentes;
+    const cb = s.combate;
+    if (cb && typeof cb === 'object') {
+      const ocultos = (cb.inimigos || []).filter(i => i && i.visivel === false).map(i => i.id);
+      cb.inimigos = (cb.inimigos || []).filter(i => i && i.visivel !== false);
+      const inis = Object.assign({}, cb.inis || {});
+      ocultos.forEach(id => { delete inis[id]; });
+      cb.inis = inis;
+      cb.ocultos = ocultos;
+    }
     return s;
   }
 
@@ -272,6 +295,7 @@
     /** p: {surpreendidos?: [ids]} — surpreendidos ficam Surpreendido até o fim da 1ª rodada e não agem nela (p. 231). */
     iniciarCombate(s, p, rng) {
       p = p || {};
+      if (s.ui && s.ui.passos) s.ui.passos.combate = true;
       s.modo = 'combate';
       s.combate.ativo = true; s.combate.rodada = 1; s.combate.inis = {};
       combatentes(s).forEach(c => { delete c.entrouNaRodada; });
@@ -290,6 +314,7 @@
       const novos = [];
       for (let i = 1; i <= qtd; i++) novos.push(novoInimigo(p, qtd > 1 || ja ? ja + i : 0));
       s.combate.inimigos = s.combate.inimigos.concat(novos);
+      if (s.ui && s.ui.passos) s.ui.passos.combate = true;
       // guarda nos recentes (sem duplicar pelo nome)
       const rec = { nome: p.nome, pv: +p.pv || 10, pm: +p.pm || 0, defesa: +p.defesa || 10, iniciativa: +p.iniciativa || 0 };
       s.recentes = [rec].concat((s.recentes || []).filter(r => r.nome !== rec.nome)).slice(0, 12);
@@ -444,7 +469,78 @@
           .subscribe();
       }
     },
-    desassinar() { if (this.canalRT && this.sb) { this.sb.removeChannel(this.canalRT); this.canalRT = null; } }
+    desassinar() { if (this.canalRT && this.sb) { this.sb.removeChannel(this.canalRT); this.canalRT = null; } },
+
+    // ----- Compartilhar com os jogadores (link público, só leitura; supabase/002_compartilhar.sql) -----
+    /** 14 caracteres aleatórios, sem os ambíguos (0/o, 1/l/i). */
+    gerarCodigo(n) {
+      const alfa = 'abcdefghjkmnpqrstuvwxyz23456789';
+      const b = new Uint8Array(n || 14);
+      (raiz.crypto || globalThis.crypto).getRandomValues(b);
+      return Array.from(b, x => alfa[x % alfa.length]).join('');
+    },
+    /** Código atual da mesa (null = não compartilhada). */
+    async codigoDe(id) {
+      if (!this.online()) return null;
+      const r = await this.sb.from('mesas').select('codigo').eq('id', id).single();
+      if (r.error) throw r.error; return r.data.codigo || null;
+    },
+    /** Cria (ou troca) o código; o antigo deixa de funcionar. */
+    async compartilhar(id) {
+      if (!this.online()) throw new Error('Compartilhar exige o modo online (Supabase).');
+      const codigo = this.gerarCodigo();
+      const r = await this.sb.from('mesas').update({ codigo }).eq('id', id);
+      if (r.error) throw r.error;
+      this.pararPublicar();
+      return codigo;
+    },
+    async pararCompartilhar(id) {
+      if (!this.online()) return;
+      const r = await this.sb.from('mesas').update({ codigo: null }).eq('id', id);
+      if (r.error) throw r.error;
+      this.pararPublicar();
+    },
+    /** Carga inicial de quem abriu o link (sem login). Devolve {id, nome, estado} ou null. */
+    async carregarPublica(codigo) {
+      if (!this.sb) return null;
+      const r = await this.sb.rpc('mesa_publica', { p_codigo: codigo });
+      if (r.error) throw r.error; return r.data || null;
+    },
+    /** Escuta o Broadcast que o mestre envia em pub-<codigo>. cb(estado) */
+    assinarPublica(codigo, cb) {
+      if (!this.sb) return null;
+      return this.sb.channel('pub-' + codigo)
+        .on('broadcast', { event: 'estado' }, msg => { if (msg && msg.payload && msg.payload.estado) cb(msg.payload.estado); })
+        .subscribe();
+    },
+    /** Mestre: envia o estado (já sem ocultos) no canal público. No máximo 1 envio a cada 300 ms, sempre o último. */
+    pub: { codigo: null, canal: null, pronto: false, ultimo: null, timer: null, enviadoEm: 0 },
+    publicar(codigo, estado) {
+      if (!this.online() || !codigo || !estado) return;
+      const P = this.pub;
+      if (P.codigo !== codigo) {
+        this.pararPublicar();
+        P.codigo = codigo;
+        P.canal = this.sb.channel('pub-' + codigo, { config: { broadcast: { self: false, ack: false } } });
+        P.canal.subscribe(st => { P.pronto = st === 'SUBSCRIBED'; if (P.pronto && P.ultimo) agendar(0); });
+      }
+      P.ultimo = estado;
+      const enviar = () => {
+        P.timer = null;
+        if (!P.pronto || !P.ultimo || !P.canal) return;
+        P.enviadoEm = Date.now();
+        P.canal.send({ type: 'broadcast', event: 'estado', payload: { estado: estadoPublico(P.ultimo) } });
+        P.ultimo = null;
+      };
+      function agendar(ms) { if (!P.timer) P.timer = setTimeout(enviar, ms); }
+      agendar(Math.max(0, 300 - (Date.now() - P.enviadoEm)));
+    },
+    pararPublicar() {
+      const P = this.pub;
+      clearTimeout(P.timer);
+      if (P.canal && this.sb) this.sb.removeChannel(P.canal);
+      Object.assign(P, { codigo: null, canal: null, pronto: false, ultimo: null, timer: null });
+    }
   };
 
   // ---------- Store da tela do mestre ----------
@@ -453,6 +549,7 @@
     const subs = new Set();
     const st = {
       erroSalvar: null,
+      codigo: null, // código do link público da mesa aberta (null = não compartilhada)
       get estado() { return estado; }, get mesaId() { return mesaId; },
       podeDesfazer: () => pilha.length > 0, podeRefazer: () => refazer.length > 0,
       sub(fn) { subs.add(fn); return () => subs.delete(fn); },
@@ -462,9 +559,19 @@
         mesaId = id; pilha = []; refazer = [];
         LS.set('t20s.mesaAtiva', id);
         Sync.assinar(id, remoto => { estado = normalizar(remoto); emitir(false); });
+        st.codigo = null;
         anunciar(); emitir(false);
+        if (Sync.online()) Sync.codigoDe(id).then(c => { if (mesaId === id) { st.codigo = c; publicar(); } }).catch(() => {});
       },
-      fechar() { Sync.desassinar(); estado = null; mesaId = null; emitir(false); },
+      fechar() { Sync.desassinar(); Sync.pararPublicar(); estado = null; mesaId = null; st.codigo = null; emitir(false); },
+      /** Muda estado.ui (Primeiros passos) sem entrar no desfazer. fn(ui) */
+      marcarUi(fn) {
+        if (!estado) return;
+        const antes = JSON.stringify(estado.ui);
+        fn(estado.ui);
+        if (JSON.stringify(estado.ui) !== antes) emitir(true);
+      },
+      definirCodigo(c) { st.codigo = c || null; publicar(); subs.forEach(fn => fn(estado)); },
       /** Executa uma ação. Devolve o retorno da ação (notas, avisos). */
       acao(nome, p, rng) {
         if (!estado) return;
@@ -476,15 +583,16 @@
         estado = novo; emitir(true);
         return ret;
       },
-      desfazer() { if (!pilha.length) return; refazer.push(estado); estado = pilha.pop(); emitir(true); },
-      refazer() { if (!refazer.length) return; pilha.push(estado); estado = refazer.pop(); emitir(true); },
+      desfazer() { if (!pilha.length) return; const u = estado.ui; refazer.push(estado); estado = pilha.pop(); estado.ui = u; emitir(true); },
+      refazer() { if (!refazer.length) return; const u = estado.ui; pilha.push(estado); estado = refazer.pop(); estado.ui = u; emitir(true); },
       salvarAgora() { clearTimeout(timer); return gravar(); }
     };
     function anunciar() { if (CANAL && estado) CANAL.postMessage({ tipo: 'estado', mesaId, estado }); }
+    function publicar() { if (st.codigo && estado) Sync.publicar(st.codigo, estado); }
     function emitir(mudou) {
       if (mudou && estado) {
         estado.rev = (estado.rev || 0) + 1; estado.origem = ORIGEM;
-        anunciar();
+        anunciar(); publicar();
         LS.set('t20s.mesa.' + mesaId, estado);
         clearTimeout(timer); timer = setTimeout(gravar, 500);
       }
@@ -505,7 +613,7 @@
     return st;
   }
 
-  const T20S = { ORIGEM, CANAL, LS, uid, estadoInicial, novoJogador, normalizar, ACOES, Sync, criarStore, combatentes, achar, daVez, ordemValida, foraDeCombate, pulaVez };
+  const T20S = { ORIGEM, CANAL, LS, uid, estadoInicial, novoJogador, normalizar, estadoPublico, ACOES, Sync, criarStore, combatentes, achar, daVez, ordemValida, foraDeCombate, pulaVez };
   if (typeof module !== 'undefined' && module.exports) module.exports = T20S;
   else raiz.T20S = T20S;
 })(typeof window !== 'undefined' ? window : globalThis);

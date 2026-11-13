@@ -10,7 +10,7 @@ Sem grid nem mapa: é para mesa física. Login e banco ficam no [Supabase](https
 ## Colocar no ar (uma vez, ~10 min)
 
 1. **Criar o projeto no Supabase**: supabase.com → *New project* (região São Paulo). Anote a senha do banco.
-2. **Criar a tabela**: no projeto, *SQL Editor* → *New query* → cole o conteúdo de [`supabase/schema.sql`](supabase/schema.sql) → *Run*.
+2. **Criar a tabela**: no projeto, *SQL Editor* → *New query* → cole o conteúdo de [`supabase/schema.sql`](supabase/schema.sql) → *Run*. (Quem já tinha criado o banco antes do botão Compartilhar: rode também, uma vez, [`supabase/002_compartilhar.sql`](supabase/002_compartilhar.sql).)
 3. **Configurar o app**: em *Project Settings → API*, copie a *Project URL* e a chave *anon public* para [`js/config.js`](js/config.js) e faça commit. A chave anon é pública por design; os dados ficam protegidos pelas regras RLS do passo 2.
 4. **Login por e-mail**: em *Authentication → URL Configuration*, ponha o endereço do site (`https://psalmazzi.github.io/T20Session/`) em *Site URL*. Se não quiser confirmar e-mail ao criar conta, desligue *Authentication → Providers → Email → Confirm email*.
 5. **Ligar o GitHub Pages**: no repositório, *Settings → Pages → Source: GitHub Actions*. Cada push na `main` roda os testes e publica.
@@ -19,12 +19,26 @@ Sem o passo 3, o app funciona em **modo local**: sem login, com os dados só naq
 
 ## Uso na mesa
 
-- Abra o site no notebook e clique no ícone de **monitor** no cabeçalho (Tela dos jogadores): abre uma janela; arraste para o segundo monitor/TV e dê **duplo clique** para tela cheia. No mesmo computador a atualização é instantânea.
+Na 1ª abertura o app liga o **modo Dicas**: legendas curtas, o card **Primeiros passos** (adicionar o grupo, mostrar a tela aos jogadores, preparar um combate) e explicações nos formulários. Desligue em **⋯ → Ajuda → Mostrar dicas**; lá também fica o **Guia rápido** (como usar, termos, regra da casa, condições comuns). Quem já tinha mesas salvas começa com as dicas desligadas.
+
+- Abra o site no notebook e clique em **Tela dos jogadores** (ícone de monitor) no cabeçalho: abre uma janela; arraste para o segundo monitor/TV e dê **duplo clique** para tela cheia. No mesmo computador a atualização é instantânea.
 - Em outro aparelho (TV com navegador, tablet), abra `…/display.html` e entre uma vez com a mesma conta; ele segue a última mesa aberta.
 - Atalhos do mestre: **→** próximo turno, **Ctrl+Z / Ctrl+Y** desfazer/refazer, **Enter** no campo de valor aplica dano (ou gasto de PM).
 - **Histórico** (≡ no cabeçalho): cada ação fica registrada com a hora, a mais recente primeiro; um ponto dourado avisa que há novidade. **↶** desfaz. Avisos (sem ração, falha de fome, sangramento) aparecem em laranja. Erros, como PM insuficiente, aparecem num aviso no topo.
-- **⋯** (menu): opções do combate, encerrar combate, tela dos jogadores, renomear mesa e trocar de mesa.
+- **⋯** (menu): opções do combate, encerrar combate, tela dos jogadores, compartilhar, renomear mesa, trocar de mesa e Ajuda.
+- **Iniciar combate**: marque em cada linha **Pronto** ou **Surpreso** (ou use os atalhos *Ninguém / Inimigos / Jogadores surpresos*); o resumo embaixo diz quem não age na 1ª rodada.
+- **Passar a vez** para alguém fora de ordem: passe o mouse na linha e clique em **Passar a vez para cá** (no celular, na folha do combatente). Clicar no nome não muda a vez.
+- O cabeçalho mostra se os dados estão **Local** (só neste navegador), **Salvo** ou **Erro ao salvar**.
 - **Celular**: toque num personagem ou combatente para abrir a folha com teclado (Dano/Cura, Gastar/Recuperar PM, tibares e rações), como no MobileT20. A barra de baixo tem Descanso/Alimentar/Combate ou ‹ Próximo turno ›.
+
+## Compartilhar com os jogadores
+
+O botão **Compartilhar** (no celular, em **⋯**) gera um link para os jogadores abrirem a tela dos jogadores **no próprio celular, sem login e só leitura**. Inimigos ocultos (olho) não aparecem, nem o histórico do mestre.
+
+- **Antes da 1ª vez**: rode [`supabase/002_compartilhar.sql`](supabase/002_compartilhar.sql) no *SQL Editor* do Supabase (uma vez; pode rodar de novo sem problema). Instalações novas com o `schema.sql` atual já têm tudo.
+- No modal: **Copiar link**, **Enviar…** (compartilhar do celular), **Gerar novo link** (o antigo para de funcionar) e **Parar de compartilhar**.
+- Como funciona: a mesa ganha um código aleatório de 14 caracteres (coluna `codigo`). O link `display.html?c=<código>` lê a mesa pela função `mesa_publica` (só devolve a mesa daquele código, já sem inimigos ocultos; o RLS de leitura continua só para o dono) e recebe as mudanças pelo Realtime **Broadcast** no canal `pub-<código>`, que a tela do mestre envia (no máximo 1 envio a cada 300 ms).
+- Em **modo local** não há link público: o modal mostra só o link da tela dos jogadores no mesmo computador.
 
 ## Regras usadas (Livro Base JdA, páginas impressas)
 
@@ -61,7 +75,9 @@ js/regras.js      regras puras de T20 (testadas)
 js/store.js       estado, ações, desfazer, persistência e sincronização
 js/gm.js          interface do mestre
 js/display.js     interface dos jogadores
-supabase/schema.sql
+supabase/schema.sql             banco do zero (inclui o compartilhamento)
+supabase/002_compartilhar.sql   só o compartilhamento, para bancos já criados
 tests/regras.test.js   node tests/regras.test.js
 tests/e2e.py           python3 tests/e2e.py [pasta dos prints]  (Playwright + Chrome)
+tests/compartilhar_e2e.py   link público com um Supabase falso (tests/fake_supabase.js)
 ```

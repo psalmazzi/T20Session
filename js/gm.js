@@ -25,8 +25,24 @@
     olho: svg('<path d="M1.9 10S4.9 4.6 10 4.6 18.1 10 18.1 10 15.1 15.4 10 15.4 1.9 10 1.9 10Z"/><circle cx="10" cy="10" r="2.4"/>'),
     // ◔ (U+25D4) desenhado em SVG: o glifo falta em várias fontes do sistema.
     racao: '<svg class="ic-racao" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 10V3.5A6.5 6.5 0 0 1 16.5 10Z" class="cheio"/></svg>',
+    compartilhar: svg('<circle cx="5.2" cy="10" r="2.2"/><circle cx="14.8" cy="4.9" r="2.2"/><circle cx="14.8" cy="15.1" r="2.2"/><path d="M7.2 9l5.6-3M7.2 11l5.6 3"/>'),
     olhoFechado: svg('<path d="M1.9 10S4.9 4.6 10 4.6 18.1 10 18.1 10 15.1 15.4 10 15.4 1.9 10 1.9 10Z"/><circle cx="10" cy="10" r="2.4"/><path d="M3.5 3.5l13 13"/>')
   };
+
+  // ---------- Modo Dicas (specs/ux-novatos.md) ----------
+  // Liga sozinho na 1ª abertura; quem já usava o app (tem mesas salvas) começa sem dicas.
+  // Todo elemento .dica só aparece com body.dicas (CSS); o menu ⋯ > Ajuda liga/desliga.
+  function iniciarDicas() {
+    let on = S.LS.get('t20s.dicas');
+    if (on === null) {
+      on = !(S.LS.get('t20s.mesaAtiva') || (S.LS.get('t20s.mesas') || []).length);
+      S.LS.set('t20s.dicas', on);
+    }
+    document.body.classList.toggle('dicas', !!on);
+  }
+  const dicasOn = () => document.body.classList.contains('dicas');
+  function ligarDicas(on) { S.LS.set('t20s.dicas', !!on); document.body.classList.toggle('dicas', !!on); }
+  iniciarDicas();
 
   let tela = 'carregando';
   // Estado só da interface (não vai para o banco).
@@ -93,6 +109,7 @@
     if (/Email not confirmed/i.test(m)) return 'Confirme o e-mail antes de entrar (veja sua caixa de entrada).';
     if (/already registered/i.test(m)) return 'Esse e-mail já tem conta. Use Entrar.';
     if (/Failed to fetch/i.test(m)) return 'Sem conexão com o servidor.';
+    if (/codigo|mesa_publica|schema cache/i.test(m)) return 'Falta preparar o banco: rode supabase/002_compartilhar.sql no SQL Editor do Supabase (uma vez).';
     return m;
   }
 
@@ -105,13 +122,15 @@
     try { mesas = await S.Sync.listarMesas(); } catch (e) { erroMsg = traduzErro(e); }
     app.innerHTML = `<div class="centro"><div class="caixa">
       <h1>T20Session</h1>
-      <div class="sub">${S.Sync.online() ? esc(S.Sync.usuario.email) : 'Modo local · dados só neste navegador'}</div>
+      <div class="sub">${S.Sync.online() ? esc(S.Sync.usuario.email) : 'Modo local'}</div>
+      <div class="nota dica centro-txt">Uma mesa guarda o grupo, os combates e o histórico de uma campanha.</div>
       <div class="lista-mesas">${mesas.length ? mesas.map(m => `
         <div class="mesa"><button class="abrir" data-abrir="${esc(m.id)}">${esc(m.nome)}<small>${m.atualizado ? new Date(m.atualizado).toLocaleString('pt-BR') : ''}</small></button>
         <button class="btn perigo" data-excluir="${esc(m.id)}">Excluir</button></div>`).join('') : '<div class="nota">Nenhuma mesa ainda.</div>'}
       </div>
-      <form id="f-mesa" class="linha-form"><input type="text" name="nome" placeholder="Nome da nova mesa" required maxlength="60">
+      <form id="f-mesa" class="linha-form"><input type="text" name="nome" placeholder="Nome da campanha (ex.: Coração de Rubi)" required maxlength="60" aria-label="Nome da nova mesa">
       <button class="btn pri">Criar</button></form>
+      ${S.Sync.online() ? '' : '<div class="nota">Modo local: os dados ficam só neste navegador. Não limpe os dados do site.</div>'}
       <div class="erro">${esc(erroMsg || '')}</div>
       ${S.Sync.online() ? '<button class="btn" id="b-sair">Sair da conta</button>' : ''}
     </div></div>`;
@@ -143,7 +162,8 @@
     const s = store.estado;
     const foco = document.activeElement && document.activeElement.id;
     const syncCls = !S.Sync.online() ? 'local' : store.erroSalvar ? 'erro' : '';
-    const syncTit = !S.Sync.online() ? 'Modo local (sem login)' : store.erroSalvar ? 'Erro ao salvar: ' + store.erroSalvar : 'Sincronizado';
+    const syncTit = !S.Sync.online() ? 'Modo local: os dados ficam só neste navegador' : store.erroSalvar ? 'Erro ao salvar: ' + store.erroSalvar : 'Salvo e sincronizado';
+    const syncRot = !S.Sync.online() ? 'Local' : store.erroSalvar ? 'Erro ao salvar' : 'Salvo';
     const cb = s.combate;
     const novo = s.log && s.log[0] && s.log[0].t > ui.vistoAte;
     const fl = ui.flashAte > Date.now() ? ' flash' : '';
@@ -159,8 +179,9 @@
         <button class="ic${fl}" data-a="desfazer" ${store.podeDesfazer() ? '' : 'disabled'} title="Desfazer (Ctrl+Z)" aria-label="Desfazer"${flashAttr()}>${G.desf}</button>
         <button class="ic so-desk" data-a="refazer" ${store.podeRefazer() ? '' : 'disabled'} title="Refazer (Ctrl+Y)" aria-label="Refazer">${G.ref}</button>
         <button class="ic hist${novo ? ' novo' : ''}${fl}" data-a="historico" title="Histórico" aria-label="Histórico"${flashAttr()}><span class="gl">${G.hist}</span><span class="so-desk">Histórico</span><i class="ponto"></i></button>
-        <button class="ic so-desk" data-a="display" title="Abrir a tela dos jogadores em outra janela" aria-label="Tela dos jogadores">${IC.monitor}</button>
-        <span class="sync so-desk ${syncCls}" title="${esc(syncTit)}"></span>
+        <button class="ic so-desk rotulado" data-a="display" title="Abre uma janela para arrastar ao 2º monitor ou TV. Duplo clique nela = tela cheia." aria-label="Tela dos jogadores">${IC.monitor}<span class="rot-larga">Tela dos jogadores</span></button>
+        <button class="ic so-desk rotulado${store.codigo ? ' ligado' : ''}" data-a="compartilhar" title="Enviar o link da tela dos jogadores para os celulares (só leitura)" aria-label="Compartilhar">${IC.compartilhar}<span class="rot-larga">Compartilhar</span></button>
+        <span class="sync so-desk ${syncCls}" title="${esc(syncTit)}"><i></i><span class="sync-rot">${syncRot}</span></span>
         <button class="ic" data-a="menu" title="Mais opções" aria-label="Mais opções">${G.mais}</button>
       </header>
       <main class="${s.modo}">${s.modo === 'combate' ? htmlCombate(s) : htmlGrupo(s)}</main>
@@ -180,7 +201,7 @@
     const pv = tipo === 'pv';
     return `<div class="ajuste">
         <button class="acao-mini ${pv ? 'dano' : 'gasto'}" data-a="${tipo}-" data-id="${c.id}" title="${pv ? 'Dano' : 'Gastar PM'} (valor ao lado; vazio = 1)" aria-label="${pv ? 'Dano' : 'Gastar PM'}">−</button>
-        <input type="number" inputmode="numeric" min="0" id="v-${tipo}-${c.id}" placeholder="1" aria-label="valor de ${pv ? 'PV' : 'PM'}">
+        <input type="number" inputmode="numeric" min="0" id="v-${tipo}-${c.id}" title="Digite o valor; vazio = 1. Enter aplica ${pv ? 'dano' : 'gasto'}." aria-label="valor de ${pv ? 'PV' : 'PM'}">
         <button class="acao-mini cura" data-a="${tipo}+" data-id="${c.id}" title="${pv ? 'Cura' : 'Recuperar PM'}" aria-label="${pv ? 'Cura' : 'Recuperar PM'}">+</button>
       </div>`;
   }
@@ -211,8 +232,38 @@
   }
 
   // ---------- Grupo ----------
+  /** Card "Primeiros passos" (só com dicas). Passos se marcam sozinhos; estado em estado.ui.passos. */
+  const PASSOS = [
+    { tit: 'Adicione os personagens do grupo', txt: 'Copie PV, PM e Defesa da ficha de cada jogador.', btn: pri => `<button class="btn${pri ? ' pri' : ''}" data-a="novo">+ Personagem</button>` },
+    { tit: 'Mostre a mesa aos jogadores (opcional)', txt: 'Abre uma janela: arraste para a TV ou 2º monitor e dê duplo clique.', btn: pri => `<button class="btn${pri ? ' pri' : ''}" data-a="display">${IC.monitor} Abrir tela dos jogadores</button>` },
+    { tit: 'Prepare um combate', txt: 'Adicione inimigos e clique em Iniciar. A iniciativa é rolada sozinha.', btn: pri => `<button class="btn${pri ? ' pri' : ''}" data-a="modo" data-v="combate"><span class="gl">${G.espadas}</span> Ir para Combate</button>` }
+  ];
+  function passosFeitos(s) {
+    const p = s.ui.passos;
+    return [s.jogadores.length > 0, !!p.tela, !!(p.combate || s.combate.inimigos.length || s.combate.ativo)];
+  }
+  function htmlPassos(s) {
+    if (s.ui.passos.dispensado) return '';
+    const feitos = passosFeitos(s);
+    const n = feitos.filter(Boolean).length;
+    if (n === 3) return '';
+    const prox = feitos.indexOf(false);
+    if (feitos[0]) {
+      return `<div class="passos curto dica"><span class="passos-tit"><b>Primeiros passos</b> · ${n} de 3 · Próximo:</span>
+        <button class="link" data-a="passo" data-v="${prox}">${PASSOS[prox].tit} <span class="seta">${G.prox}</span></button>
+        <span class="espaco"></span><button class="btn ghost peq" data-a="dispensar">Dispensar</button></div>`;
+    }
+    return `<section class="passos dica" aria-label="Primeiros passos">
+      <div class="passos-topo"><b>Primeiros passos</b><span class="nota">${n} de 3</span><span class="espaco"></span><button class="btn ghost peq" data-a="dispensar">Dispensar</button></div>
+      ${PASSOS.map((x, i) => `<div class="passo${feitos[i] ? ' feito' : ''}"><span class="passo-n">${feitos[i] ? '\u2713' : i + 1}</span>
+        <div class="passo-txt"><b>${x.tit}</b><span class="nota">${x.txt}</span></div>${feitos[i] ? '' : x.btn(i === prox)}</div>`).join('')}
+    </section>`;
+  }
+  /** Dica do celular abaixo do 1º card/linha; some depois de abrir o teclado uma vez. */
+  function dicaToque() { return S.LS.get('t20s.dica.teclado') ? '' : '<p class="dica dica-toque so-cel">Toque num personagem para dano, cura e PM.</p>'; }
+
   function htmlGrupo(s) {
-    const cards = s.jogadores.map(j => {
+    const cards = s.jogadores.map((j, k) => {
       const e = R.estadoPV(j.pv.atual, j.pv.max);
       const morto = R.estaMorto(j);
       return `<article class="card ${morto ? 'morto' : e === 'caido' ? 'caido' : ''}" data-a="folha" data-id="${j.id}">
@@ -231,17 +282,20 @@
             <span class="so-desk ctl"><button class="mini" data-a="rac-" data-id="${j.id}" title="Tirar 1 ração" aria-label="Tirar 1 ração">−</button><button class="mini" data-a="rac+" data-id="${j.id}" title="Somar 1 ração" aria-label="Somar 1 ração">+</button></span></span>
         </div>
         ${chipsCond(j)}</div>
-      </article>`;
+      </article>${k === 0 ? dicaToque() : ''}`;
     }).join('');
+    const passos = htmlPassos(s);
     return `<div class="barra-acoes so-desk">
         <button class="btn" data-a="descanso"><span class="gl">${G.lua}</span> Descanso</button>
-        <button class="btn" data-a="alimentar"><span class="gl-racao" title="Rações">${IC.racao}</span> Alimentar</button>
-        <button class="btn" data-a="limparcond" title="Condições terminam no fim da cena, salvo indicação (p. 394)">Limpar condições</button>
+        <button class="btn" data-a="alimentar" title="Cada um come 1 ração; quem não tem fica com fome (p. 319)"><span class="gl-racao">${IC.racao}</span> Alimentar</button>
+        <button class="btn" data-a="limparcond" title="Fim da cena: remove condições de cena e de rodadas (p. 394)">Limpar condições</button>
         <span class="espaco"></span>
         <button class="btn" data-a="novo">+ Personagem</button>
         <button class="btn" data-a="modo" data-v="combate"><span class="gl">${G.espadas}</span> Combate</button>
       </div>
-      ${s.jogadores.length ? `<div class="grade">${cards}</div>` : `<div class="vazio">Adicione os personagens do grupo para começar.<br><br><button class="btn pri" data-a="novo">+ Personagem</button></div>`}`;
+      ${passos}
+      ${s.jogadores.length ? `<div class="legenda dica so-desk">− dano · valor · + cura <span>(vazio = 1 · Enter = dano)</span></div><div class="grade">${cards}</div>`
+        : `<div class="vazio${passos ? ' sem-dica' : ''}">Adicione os personagens do grupo para começar.<br><br><button class="btn pri" data-a="novo">+ Personagem</button></div>`}`;
   }
 
   // ---------- Combate ----------
@@ -251,7 +305,7 @@
     const ordem = cb.ativo ? S.ordemValida(s).map(id => S.achar(s, id)) : todos;
     const vez = S.daVez(s);
     const vezC = vez && S.achar(s, vez);
-    const linhas = ordem.map(c => {
+    const linhas = ordem.map((c, k) => {
       const ini = cb.inis[c.id];
       const est = R.estadoPV(c.pv.atual, c.pv.max);
       const espera = cb.ativo && S.pulaVez(s, c) && !S.foraDeCombate(c);
@@ -259,23 +313,29 @@
       const sub = [`DEF ${c.defesa}`, `INI ${sinal(c.iniciativa)}`];
       if (c.tipo === 'inimigo' && !c.visivel) sub.push('oculto');
       if (espera) sub.push(c.entrouNaRodada === cb.rodada ? 'age na próxima rodada' : 'surpreendido: não age');
+      const mod = ini ? ini.total - ini.d20 : 0;
+      const iniSub = ini ? (ini.manual ? 'digitado' : `d20 ${ini.d20} ${mod < 0 ? '−' : '+'} ${Math.abs(mod)}`) : '';
+      const darVez = cb.ativo && c.id !== vez && !S.foraDeCombate(c);
       return `<div class="linha-ini ${cls}" data-a="folha" data-id="${c.id}">
-        <div class="ini-num">${cb.ativo ? `<input type="number" id="ini-${c.id}" data-ini="${c.id}" value="${ini ? ini.total : ''}" aria-label="Iniciativa de ${esc(c.nome)}" title="Total de iniciativa (pode digitar o que o jogador rolou)"><small>${ini ? (ini.manual ? 'digitado' : 'd20 ' + ini.d20) : ''}</small>` : '<small>—</small>'}</div>
-        <div class="ini-nome"><div class="nome-linha"><button class="nome" data-a="irpara" data-id="${c.id}" title="Passar a vez para este">${esc(c.nome)}</button>${faixa(c)}</div>
-          <div class="sub">${sub.join(' · ')}</div></div>
+        <div class="ini-num">${cb.ativo ? `<input type="number" id="ini-${c.id}" data-ini="${c.id}" value="${ini ? ini.total : ''}" aria-label="Iniciativa de ${esc(c.nome)}" title="Total da Iniciativa. Toque para digitar o que o jogador rolou (p. 231)."><small>${iniSub}</small>` : '<small>—</small>'}</div>
+        <div class="ini-nome"><div class="nome-linha"><span class="nome">${esc(c.nome)}</span>${faixa(c)}</div>
+          <div class="sub-slot"><div class="sub">${sub.join(' · ')}</div>${darVez ? `<button class="dar-vez so-desk" data-a="darvez" data-id="${c.id}" title="Faz ${esc(c.nome)} ser quem está na vez agora">Passar a vez para cá</button>` : ''}</div></div>
         <div class="ini-pv">${barraRec(c, 'pv')}<div class="so-desk">${ajuste(c, 'pv')}</div></div>
         <div class="ini-pm so-desk">${c.pm.max > 0 ? barraRec(c, 'pm') + ajuste(c, 'pm') : ''}</div>
         <div class="ini-cond">${chipsCond(c)}</div>
         <div class="ini-acoes so-desk">${c.tipo === 'inimigo' ? `
-          <button class="ic-mini olho ${c.visivel ? '' : 'off'}" data-a="visivel" data-id="${c.id}" title="${c.visivel ? 'Esconder da tela dos jogadores' : 'Mostrar na tela dos jogadores'}" aria-label="${c.visivel ? 'Esconder' : 'Mostrar'} ${esc(c.nome)}">${c.visivel ? IC.olho : IC.olhoFechado}</button>
+          <button class="ic-mini olho ${c.visivel ? '' : 'off'}" data-a="visivel" data-id="${c.id}" title="Visível na tela dos jogadores. Oculto: some de lá (emboscada). Clique para trocar." aria-label="${c.visivel ? 'Esconder' : 'Mostrar'} ${esc(c.nome)} na tela dos jogadores">${c.visivel ? IC.olho : IC.olhoFechado}<span class="dica olho-rot">${c.visivel ? 'Visível' : 'Oculto'}</span></button>
           <button class="ic-mini" data-a="editarini" data-id="${c.id}" title="Editar" aria-label="Editar ${esc(c.nome)}">${G.lapis}</button>
           <button class="ic-mini rm" data-a="rmini" data-id="${c.id}" title="Remover" aria-label="Remover ${esc(c.nome)}">${G.x}</button>` : `<button class="ic-mini" data-a="editar" data-id="${c.id}" title="Editar" aria-label="Editar ${esc(c.nome)}">${G.lapis}</button>`}
-        </div></div>`;
+        </div></div>${k === 0 ? dicaToque() : ''}`;
     }).join('');
+    const semInimigos = !cb.inimigos.length;
+    const legenda = `<div class="legenda-ini dica so-desk" aria-hidden="true"><span>Ini</span><span>Nome</span><span><b class="t-pv">PV</b> − dano · valor · + cura</span><span><b class="t-pm">PM</b> − gasto · + recupera</span><span>Condições</span><span></span></div>
+      <div class="legenda legenda-media dica so-desk">− dano · valor · + cura <span>(vazio = 1 · Enter = dano)</span></div>`;
     const sangra = cb.ativo && vezC && (vezC.condicoes || []).some(x => x.cond === 'sangrando');
     return `
       <div class="painel-turno">
-        ${cb.ativo ? `<span class="rodada">Rodada ${cb.rodada}</span><span class="vez">Vez de <b>${vezC ? esc(vezC.nome) : '—'}</b></span>
+        ${cb.ativo ? `<span class="rodada">Rodada ${cb.rodada}</span>${cb.rerrolarCadaRodada ? '<span class="dica nota-rodada">· ordem nova a cada rodada (regra da casa)</span>' : ''}<span class="vez">Vez de <b>${vezC ? esc(vezC.nome) : '—'}</b></span>
           <span class="espaco"></span>
           <span class="so-desk grupo-btn">
           <button class="btn" data-a="anterior" title="Turno anterior" aria-label="Turno anterior"><span class="seta">${G.ant}</span></button>
@@ -283,27 +343,30 @@
           <button class="btn" data-a="novarodada" title="Encerra a rodada agora">Nova rodada</button>
           <button class="btn" data-a="rolar" title="Rola de novo para todos">${IC.dado} Rolar ini</button>
           <button class="btn" data-a="addini">+ Inimigo</button></span>`
-        : `<span class="vez">Prepare os inimigos e comece. A iniciativa é rolada para todos ao iniciar.</span>
+        : `<span class="vez antes">Adicione os inimigos e clique em Iniciar. A iniciativa de todos é rolada sozinha.</span>
           <span class="espaco"></span>
-          <span class="grupo-btn"><button class="btn pri" data-a="iniciar" ${todos.length ? '' : 'disabled'}><span class="gl">${G.espadas}</span> Iniciar combate</button>
+          <span class="grupo-btn"><button class="btn${semInimigos ? '' : ' pri'}" data-a="iniciar" ${todos.length ? '' : 'disabled'}><span class="gl">${G.espadas}</span> Iniciar combate</button>
           <button class="btn so-desk" data-a="addini">+ Inimigo</button></span>`}
         <button class="ic so-desk" data-a="menu" title="Opções do combate" aria-label="Opções do combate">${G.mais}</button>
       </div>
       ${sangra ? `<div class="lembrete"><span><b>${esc(vezC.nome)}</b> está sangrando · início do turno: <b>Con CD 15</b></span>
         <span class="grupo-btn"><button class="btn" data-a="sangra-ok" data-id="${vezC.id}">Passou</button><button class="btn perigo" data-a="sangra-falha" data-id="${vezC.id}">Falhou · −1d6 PV</button></span></div>` : ''}
-      ${ordem.length ? `<div class="lista-ini">${linhas}</div>` : '<div class="vazio">Sem combatentes. Adicione personagens na aba Grupo e inimigos aqui.</div>'}`;
+      ${ordem.length ? `${legenda}<div class="lista-ini">${linhas}</div>` : ''}
+      ${!cb.ativo && semInimigos ? `<div class="linha-vazia"><span>Nenhum inimigo ainda.</span><button class="btn peq" data-a="addini">+ Inimigo</button></div>` : ''}
+      ${!ordem.length && !semInimigos ? '<div class="vazio">Sem combatentes.</div>' : ''}
+      ${!s.jogadores.length && !cb.ativo ? '<div class="nota dica nota-centro">Os personagens vêm da aba Grupo.</div>' : ''}`;
   }
 
   /** Barra de ação fixa do celular. */
   function htmlBarraCel(s) {
     if (s.modo === 'combate') {
-      if (!s.combate.ativo) return `<nav class="barra-cel so-cel"><button class="btn pri" data-a="iniciar"><span class="gl">${G.espadas}</span> Iniciar combate</button><button class="btn" data-a="addini" aria-label="Adicionar inimigo">+ Inimigo</button></nav>`;
+      if (!s.combate.ativo) return `<nav class="barra-cel so-cel"><button class="btn${s.combate.inimigos.length ? ' pri' : ''}" data-a="iniciar" ${S.combatentes(s).length ? '' : 'disabled'}><span class="gl">${G.espadas}</span> Iniciar combate</button><button class="btn" data-a="addini" aria-label="Adicionar inimigo">+ Inimigo</button></nav>`;
       return `<nav class="barra-cel so-cel"><button class="btn quad" data-a="anterior" aria-label="Turno anterior"><span class="seta">${G.ant}</span></button>
         <button class="btn pri" data-a="proximo">Próximo turno <span class="seta">${G.prox}</span></button>
-        <button class="btn quad" data-a="addini" aria-label="Adicionar inimigo">+</button></nav>`;
+        <button class="btn inimigo-cel" data-a="addini" aria-label="Adicionar inimigo">+ Inimigo</button></nav>`;
     }
     return `<nav class="barra-cel so-cel"><button class="btn" data-a="descanso"><span class="gl">${G.lua}</span> Descanso</button>
-      <button class="btn" data-a="alimentar"><span class="gl-racao" title="Rações">${IC.racao}</span> Alimentar</button>
+      <button class="btn" data-a="alimentar" title="Cada um come 1 ração; quem não tem fica com fome (p. 319)"><span class="gl-racao">${IC.racao}</span> Alimentar</button>
       <button class="btn" data-a="modo" data-v="combate"><span class="gl">${G.espadas}</span> Combate</button></nav>`;
   }
 
@@ -330,6 +393,10 @@
       case 'historico': abrirFolha('historico'); break;
       case 'menu': abrirFolha('menu'); break;
       case 'display': abrirDisplay(); break;
+      case 'compartilhar': modalCompartilhar(); break;
+      case 'darvez': if (s.combate.ativo) acao('irPara', { id }); break;
+      case 'dispensar': store.marcarUi(u => { u.passos.dispensado = true; }); break;
+      case 'passo': if (b.dataset.v === '1') abrirDisplay(); else if (b.dataset.v === '2') acao('modo', { modo: 'combate' }); else modalPersonagem(); break;
       case 'renomear': modalRenomear(); break;
       case 'folha': if (celular()) abrirFolha('teclado', id); break;
       case 'pv-': acao('vida', { id, n: Math.floor(valor('v-pv-' + id, 1)), tipo: 'dano' }); break;
@@ -355,7 +422,6 @@
       case 'visivel': acao('visibilidade', { id }); break;
       case 'proximo': acao('proximoTurno'); break;
       case 'anterior': acao('turnoAnterior'); break;
-      case 'irpara': if (celular()) abrirFolha('teclado', id); else if (s.combate.ativo) acao('irPara', { id }); break;
       case 'novarodada': acao('novaRodada'); break;
       case 'rolar': acao('rolarIniciativa'); break;
       case 'sangra-ok': acao('sangramento', { id, passou: true }); break;
@@ -381,7 +447,10 @@
     else if ((ev.ctrlKey || ev.metaKey) && (ev.key.toLowerCase() === 'y' || (ev.shiftKey && ev.key.toLowerCase() === 'z')) && !digitando) { ev.preventDefault(); store.refazer(); }
     else if (!digitando && !ui.folha && store.estado.modo === 'combate' && store.estado.combate.ativo && ev.key === 'ArrowRight') { ev.preventDefault(); acao('proximoTurno'); }
   });
-  function abrirDisplay() { window.open('display.html?mesa=' + encodeURIComponent(store.mesaId), 't20display', 'popup,width=1280,height=800'); }
+  function abrirDisplay() {
+    if (store.estado && !store.estado.ui.passos.tela) store.marcarUi(u => { u.passos.tela = true; });
+    window.open('display.html?mesa=' + encodeURIComponent(store.mesaId), 't20display', 'popup,width=1280,height=800');
+  }
 
   // ---------- Aviso (só erros/avisos; o resto vai para o Histórico) ----------
   let avisoTimer;
@@ -395,7 +464,10 @@
   // ---------- Folhas (Histórico, menu ⋯, teclado do celular) ----------
   function abrirFolha(tipo, id) {
     ui.folha = tipo; ui.folhaId = id || null;
-    if (tipo === 'teclado') { ui.alvo = 'pv'; ui.visor = ''; }
+    if (tipo === 'teclado') {
+      ui.alvo = 'pv'; ui.visor = '';
+      if (!S.LS.get('t20s.dica.teclado')) { S.LS.set('t20s.dica.teclado', true); render(); }
+    }
     if (tipo === 'historico') { const l = store.estado.log || []; ui.vistoAte = l[0] ? l[0].t : 0; render(); }
     renderFolha();
   }
@@ -408,11 +480,14 @@
       const l = store.estado.log || [];
       ui.vistoAte = l[0] ? l[0].t : ui.vistoAte;
       cls = 'lateral';
-      html = `<div class="folha-topo"><h2>Histórico</h2><span class="nota">${G.desf} no topo desfaz</span><button class="ic-mini" data-f="fechar" aria-label="Fechar">${G.x}</button></div>
-        <ol class="historico">${l.length ? l.map(e => `<li class="${e.tipo === 'aviso' ? 'aviso' : ''}"><time>${new Date(e.t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time><span>${esc(e.txt)}</span></li>`).join('') : '<li class="nota">Nada ainda.</li>'}</ol>`;
+      html = `<div class="folha-topo"><h2>Histórico</h2><span class="nota">${G.desf} desfaz a última ação</span><button class="ic-mini" data-f="fechar" aria-label="Fechar">${G.x}</button></div>
+        <ol class="historico">${l.length ? l.map(e => `<li class="${e.tipo === 'aviso' ? 'aviso' : ''}"><time>${new Date(e.t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time><span>${esc(e.txt)}</span></li>`).join('') : `<li class="nota vazio-hist">Nada ainda. Cada dano, cura, turno e descanso aparece aqui e pode ser desfeito com ${G.desf}.</li>`}</ol>`;
     } else if (ui.folha === 'menu') {
       cls = 'lateral';
       html = htmlMenu(store.estado);
+    } else if (ui.folha === 'guia') {
+      cls = 'lateral';
+      html = htmlGuia(store.estado);
     } else if (ui.folha === 'teclado') {
       const c = S.achar(store.estado, ui.folhaId);
       if (!c) { fecharFolha(); return; }
@@ -439,10 +514,44 @@
         <div class="menu-botoes">
           <button class="btn so-cel" data-f="acao" data-v="refazer" ${store.podeRefazer() ? '' : 'disabled'}>${G.ref} Refazer</button>
           <button class="btn" data-f="acao" data-v="display">${IC.monitor} Tela dos jogadores</button>
+          <button class="btn" data-f="acao" data-v="compartilhar">${IC.compartilhar} Compartilhar${store.codigo ? ' <span class="nota">(ligado)</span>' : ''}</button>
           <button class="btn" data-f="acao" data-v="renomear">Renomear mesa</button>
           <button class="btn" data-f="acao" data-v="mesas">Mesas</button>
         </div>
-        <div class="nota">${!S.Sync.online() ? 'Modo local: dados só neste navegador.' : store.erroSalvar ? 'Erro ao salvar: ' + esc(store.erroSalvar) : 'Sincronizado.'}</div></div>`;
+        <div class="nota">${!S.Sync.online() ? 'Modo local: os dados ficam só neste navegador. Não limpe os dados do site.' : store.erroSalvar ? 'Erro ao salvar: ' + esc(store.erroSalvar) : 'Salvo e sincronizado.'}</div></div>
+      <div class="menu-sec"><div class="tit">Ajuda</div>
+        <div class="menu-botoes"><button class="btn" data-f="guia"><span class="gl-ajuda" aria-hidden="true">?</span> Guia rápido</button></div>
+        <label class="opcao-linha"><input type="checkbox" data-dicas ${dicasOn() ? 'checked' : ''}><span><b>Mostrar dicas</b><small>Legendas e explicações curtas para quem está começando.</small></span></label></div>`;
+  }
+
+  /** Guia rápido (⋯ > Ajuda): como usar, termos, regra da casa, condições comuns, tela dos jogadores. */
+  const CONDS_GUIA = ['abalado', 'agarrado', 'atordoado', 'caido', 'cego', 'desprevenido', 'enredado', 'fatigado', 'inconsciente', 'lento', 'sangrando', 'surpreendido'];
+  function htmlGuia(s) {
+    const termo = (t, d) => `<dt>${t}</dt><dd>${d}</dd>`;
+    return `<div class="folha-topo"><h2>Guia rápido</h2><button class="ic-mini" data-f="fechar" aria-label="Fechar">${G.x}</button></div>
+      <div class="guia">
+      <section><div class="tit">Como usar</div><ol class="guia-passos">
+        <li><b>Grupo</b>: PV, PM, T$, rações, descanso e alimentação entre os combates.</li>
+        <li><b>Combate</b>: adicione os inimigos, clique em <b>Iniciar</b> e depois em <b>Próximo turno</b> (tecla ${G.prox}).</li>
+        <li>Errou? <b>${G.desf}</b> (Ctrl+Z) desfaz qualquer ação.</li>
+        <li><b>${G.hist} Histórico</b> lista tudo o que aconteceu, o mais recente primeiro.</li></ol></section>
+      <section><div class="tit">Termos</div><dl class="guia-termos">
+        ${termo('PV', 'Pontos de Vida. 0 ou menos = caído; morre em −metade do máximo ou −10, o mais baixo (p. 106).')}
+        ${termo('PM', 'Pontos de Mana: pagam magias e habilidades. Não dá para gastar mais do que se tem.')}
+        ${termo('DEF', 'Defesa: o ataque acerta se o resultado for igual ou maior que a Defesa.')}
+        ${termo('INI', 'Iniciativa: d20 + bônus decide a ordem do combate (p. 231).')}
+        ${termo('Rodada', 'Todos agem uma vez, cada um no seu turno.')}
+        ${termo('Cena', 'Um trecho da aventura, como um combate. Condições acabam no fim da cena, salvo indicação (p. 394).')}
+        ${termo('Surpresa', 'Quem foi pego desprevenido no início não age na 1ª rodada (p. 231).')}
+        ${termo('T$', 'Tibares, o dinheiro de Arton.')}
+        ${termo('Rações', '1 por dia. Sem comer, a partir do 2º dia há teste de Fortitude (p. 319).')}</dl></section>
+      <section><div class="tit">Regra da casa</div>
+        <p class="guia-txt">Pelo livro, a iniciativa é rolada <b>uma vez</b> no início do combate e a ordem se mantém (p. 231). Esta mesa ${s.combate.rerrolarCadaRodada ? '<b>rola de novo a cada rodada</b> (regra da casa, ligada)' : 'segue o livro (regra da casa desligada)'}. Troque em ${G.mais} > Combate.</p></section>
+      <section><div class="tit">Condições comuns</div><dl class="guia-termos guia-cond">
+        ${CONDS_GUIA.map(id => R.COND[id]).filter(Boolean).map(c => termo(esc(c.nome), esc(c.curto))).join('')}</dl></section>
+      <section><div class="tit">Tela dos jogadores</div>
+        <p class="guia-txt">Mostra o grupo ou a ordem do combate. Inimigos ocultos (olho) não aparecem. O PV de inimigo vira Ileso / Ferido / Muito ferido / Quase caindo, salvo "Mostrar PV dos inimigos" no ${G.mais}. Em <b>Compartilhar</b>, os jogadores abrem a mesma tela no celular, só leitura.</p></section>
+      </div>`;
   }
 
   /** Folha inferior do celular: Dano/Cura/PM com teclado (como a aba Vida do MobileT20). */
@@ -475,6 +584,7 @@
         <button class="tecla" data-f="tecla" data-v="del" aria-label="Apagar">${G.apagar}</button>${tecla(0)}<button class="tecla" data-f="tecla" data-v="c" aria-label="Limpar">C</button><button class="acao meio" data-f="cond">+ Cond.</button>
       </div>
       ${jog ? `<div class="folha-rodape"><span><span class="gl-racao" title="Rações">${IC.racao}</span> Rações <b>${c.racoes}</b></span><span class="grupo-btn"><button class="mini" data-f="rac" data-v="-1" aria-label="Tirar 1 ração">−</button><button class="mini" data-f="rac" data-v="1" aria-label="Somar 1 ração">+</button></span><button class="mini texto" data-f="editar">${G.lapis} Editar</button></div>` : ''}
+      ${store.estado.combate.ativo && S.daVez(store.estado) !== c.id && !S.foraDeCombate(c) ? `<div class="folha-rodape"><button class="mini texto" data-f="darvez">Passar a vez para cá</button></div>` : ''}
       ${chipsCond(c, true)}`;
   }
 
@@ -484,6 +594,8 @@
     const f = b.dataset.f, v = b.dataset.v, id = ui.folhaId;
     switch (f) {
       case 'fechar': fecharFolha(); break;
+      case 'guia': abrirFolha('guia'); break;
+      case 'darvez': fecharFolha(); acao('irPara', { id }); break;
       case 'alvo': ui.alvo = v; ui.visor = ''; renderFolha(); break;
       case 'tecla':
         if (v === 'del') ui.visor = ui.visor.slice(0, -1);
@@ -511,6 +623,7 @@
         else if (v === 'limparcond') acao('limparCondicoesGrupo');
         else if (v === 'refazer') store.refazer();
         else if (v === 'display') abrirDisplay();
+        else if (v === 'compartilhar') modalCompartilhar();
         else if (v === 'renomear') modalRenomear();
         else if (v === 'mesas') { store.salvarAgora(); telaMesas(); }
         break;
@@ -519,6 +632,7 @@
   folhaRaiz.addEventListener('change', ev => {
     const t = ev.target;
     if (t.dataset.opc) acao('opcaoCombate', { chave: t.dataset.opc, valor: t.checked });
+    if ('dicas' in t.dataset) ligarDicas(t.checked);
   });
 
   // ---------- Modais ----------
@@ -544,22 +658,24 @@
     const s = store.estado;
     const i = j ? s.jogadores.indexOf(j) : -1;
     const v = j ? { nome: j.nome, jogador: j.jogador, nivel: j.nivel, pvMax: j.pv.max, pvAtual: j.pv.atual, pmMax: j.pm.max, pmAtual: j.pm.atual, defesa: j.defesa, iniciativa: j.iniciativa, dinheiro: j.dinheiro, racoes: j.racoes, diasSemComer: j.diasSemComer } : { nivel: 1, defesa: 10, iniciativa: 0, dinheiro: 0, racoes: 0, diasSemComer: 0 };
-    const f = (nome, rot, tipo, extra) => `<label class="campo ${extra || ''}">${rot}<input type="${tipo || 'number'}" name="${nome}" value="${esc(v[nome] == null ? '' : v[nome])}" ${tipo === 'text' ? 'maxlength="40"' : nome === 'dinheiro' ? 'step="0.01" inputmode="decimal"' : 'step="1" inputmode="numeric"'}></label>`;
+    const f = (nome, rot, tipo, extra, ph) => `<label class="campo ${extra || ''}">${rot}<input type="${tipo || 'number'}" name="${nome}" value="${esc(v[nome] == null ? '' : v[nome])}" ${ph ? `placeholder="${ph}"` : ''} ${tipo === 'text' ? 'maxlength="40"' : nome === 'dinheiro' ? 'step="0.01" inputmode="decimal"' : 'step="1" inputmode="numeric"'}></label>`;
+    const temPoder = j && j.poderes && R.PODERES_DESCANSO.some(x => j.poderes[x.id]);
     const m = abrirModal(`<h2>${j ? 'Editar personagem' : 'Novo personagem'}</h2>
-      <form id="f-pj" class="form-col"><div class="form-grade">
-        ${f('nome', 'Personagem', 'text', 'largo')}${f('jogador', 'Jogador (opcional)', 'text', 'largo')}
-        ${f('nivel', 'Nível')}${f('defesa', 'Defesa')}${f('iniciativa', 'Iniciativa (bônus)')}
-        ${f('pvMax', 'PV máximo')}${f('pvAtual', 'PV atual')}${f('pmMax', 'PM máximo')}${f('pmAtual', 'PM atual')}
-        ${f('dinheiro', 'Tibares (T$)')}${f('racoes', 'Rações')}${f('diasSemComer', 'Dias sem comer')}
-      </div>
-      <fieldset class="poderes"><legend>Descanso: raça, origem e poderes</legend>
-        ${R.PODERES_DESCANSO.map(x => `<label class="check" title="${esc(x.desc)} (p. ${x.pag})"><input type="checkbox" name="pod_${x.id}" ${j && j.poderes && j.poderes[x.id] ? 'checked' : ''}> ${esc(x.nome)} <span class="nota">${esc(x.desc)}</span></label>`).join('')}
-      </fieldset>
+      <form id="f-pj" class="form-col"><div class="nota dica">Copie os números da ficha do jogador.</div>
+      <div class="form-grade">${f('nome', 'Personagem', 'text', 'largo')}${f('jogador', 'Jogador (opcional)', 'text', 'largo')}</div>
+      <div class="grupo-campos"><div class="tit-campos">Da ficha</div><div class="form-grade cinco">
+        ${f('nivel', 'Nível')}${f('defesa', 'Defesa')}${f('iniciativa', 'Iniciativa (bônus)')}${f('pvMax', 'PV máximo')}${f('pmMax', 'PM máximo')}</div></div>
+      <div class="grupo-campos"><div class="tit-campos">Agora</div><div class="form-grade">
+        ${f('pvAtual', 'PV atual', null, '', '= máximo')}${f('pmAtual', 'PM atual', null, '', '= máximo')}</div></div>
+      <div class="grupo-campos"><div class="tit-campos">Mochila</div><div class="form-grade">
+        ${f('dinheiro', 'Tibares (T$)')}${f('racoes', 'Rações')}${f('diasSemComer', 'Dias sem comer')}</div></div>
+      <details class="poderes"${temPoder ? ' open' : ''}><summary>Poderes que mudam o descanso (opcional)</summary>
+        <div class="poderes-lista">${R.PODERES_DESCANSO.map(x => `<label class="check" title="${esc(x.desc)} (p. ${x.pag})"><input type="checkbox" name="pod_${x.id}" ${j && j.poderes && j.poderes[x.id] ? 'checked' : ''}> ${esc(x.nome)} <span class="nota">${esc(x.desc)}</span></label>`).join('')}</div>
+      </details>
       ${j && j.morto ? `<label class="check"><input type="checkbox" name="morto" checked> Morto${j.morto === 'fome' ? ' (fome)' : ''}</label>` : ''}
       ${j && s.jogadores.length > 1 ? `<div class="linha-form"><span class="nota">Posição no grupo</span>
         <button type="button" class="btn" data-mover="-1" ${i === 0 ? 'disabled' : ''}><span class="seta">${G.ant}</span> Antes</button>
         <button type="button" class="btn" data-mover="1" ${i === s.jogadores.length - 1 ? 'disabled' : ''}>Depois <span class="seta">${G.prox}</span></button></div>` : ''}
-      <div class="nota">PV/PM atual vazio = cheio.</div>
       <div class="rodape">${j ? '<button type="button" class="btn perigo" id="b-rm" style="margin-right:auto">Remover</button>' : ''}
         <button type="button" class="btn" data-fechar>Cancelar</button><button class="btn pri">Salvar</button></div></form>`);
     const form = m.querySelector('form');
@@ -588,15 +704,18 @@
     const c = S.achar(s, id); if (!c) return;
     const vez = S.daVez(s); const vezC = vez && S.achar(s, vez);
     const m = abrirModal(`<h2>Condição · ${esc(c.nome)}</h2>
+      <div class="tit-passo">1. Quanto dura</div>
       <div class="seg-dur">
         <label><input type="radio" name="dur" value="cena" checked><span>Até o fim da cena</span></label>
         <label><input type="radio" name="dur" value="rodadas"><span>Rodadas <input type="number" id="c-rod" value="1" min="1" aria-label="número de rodadas"></span></label>
         <label><input type="radio" name="dur" value="indef"><span>Indefinida</span></label>
       </div>
       ${vezC ? `<div class="nota">Em rodadas: termina no início do turno de ${esc(vezC.nome)} (quem está na vez agora, p. 232).</div>` : ''}
-      <div class="grade-cond">${R.CONDICOES.map(x => `<button data-c="${x.id}">${esc(x.nome)}<small>${esc(x.curto)}</small></button>`).join('')}</div>
+      <div class="tit-passo">2. Toque na condição</div>
+      <div class="grade-cond">${R.CONDICOES.map(x => `<button data-c="${x.id}" title="${esc(x.curto)}">${esc(x.nome)}<small>${esc(x.curto)}</small></button>`).join('')}</div>
       <form id="f-livre" class="linha-form"><input type="text" name="livre" maxlength="40" placeholder="Outro efeito (ex.: Abençoado +1)"><button class="btn">Adicionar</button></form>
       <div class="nota">Repetir uma condição que agrava troca pela mais grave (abalado → apavorado, fatigado → exausto…). Condições terminam no fim da cena, salvo indicação (p. 394).</div>
+      <div class="nota dica">Dúvida sobre uma condição? Passe o mouse para ver o efeito (p. 394).</div>
       <div class="rodape"><button class="btn" data-fechar>Fechar</button></div>`);
     m.querySelector('#c-rod').addEventListener('focus', () => { m.querySelector('input[value=rodadas]').checked = true; });
     const dur = () => {
@@ -632,7 +751,7 @@
         return `<tr class="${o.on ? '' : 'fora'}">
           <td><label class="check"><input type="checkbox" data-m="on" data-id="${j.id}" ${o.on ? 'checked' : ''}> <b>${esc(j.nome)}</b></label>
             <div class="nota">Nv ${j.nivel}${pods.length ? ' · ' + esc(pods.join(', ')) : ''}</div></td>
-          <td><select data-m="tipo" data-id="${j.id}" ${dis} aria-label="Condição de descanso de ${esc(j.nome)}">${opcoesTipo(o.tipo)}</select>
+          <td><select data-m="tipo" data-id="${j.id}" ${dis} aria-label="Onde ${esc(j.nome)} dormiu">${opcoesTipo(o.tipo)}</select>
             ${mudou && o.on ? `<div class="nota">conta como ${R.DESCANSO[r.tipoEfetivo].nome.toLowerCase()}</div>` : ''}</td>
           <td>${o.on ? `<span class="ganho">+${r.ganhoPV}</span> → ${r.jogador.pv.atual}/${j.pv.max}` : '—'}</td>
           <td>${o.on ? `<span class="ganho">+${r.ganhoPM}</span> → ${r.jogador.pm.atual}/${j.pm.max}` : '—'}</td>
@@ -642,9 +761,10 @@
       }).join('');
       const algum = s.jogadores.some(j => membros[j.id].on);
       corpo.innerHTML = `<h2>Descanso</h2>
+        <div class="nota dica">Escolha onde cada um dormiu; a prévia mostra o PV e PM recuperados (p. 106).</div>
         <div class="linha-form"><span class="nota">Todos em</span>
           ${R.DESCANSOS.map(d => `<button class="btn peq" data-todos="${d.id}">${d.nome}</button>`).join('')}</div>
-        <div class="tabela-rolagem"><table class="previa"><thead><tr><th>Quem descansa</th><th>Condição</th><th>PV</th><th>PM</th><th>Extras</th><th>Comida</th></tr></thead><tbody>${linhas}</tbody></table></div>
+        <div class="tabela-rolagem"><table class="previa"><thead><tr><th>Quem descansa</th><th>Onde dormiu</th><th>PV</th><th>PM</th><th>Extras<div class="nota th-nota">Cuidados: Cura CD 15 · Sopa: +PM</div></th><th>Comida</th></tr></thead><tbody>${linhas}</tbody></table></div>
         <div class="linha-form">
           <label class="check" title="Recuperação pela metade, depois dos outros efeitos (p. 319)"><input type="checkbox" id="d-tormenta" ${tormenta ? 'checked' : ''}> Área de Tormenta</label>
         </div>
@@ -670,19 +790,99 @@
     desenhar();
   }
 
-  /** Iniciar combate: marcar quem está surpreendido (p. 231). */
+  /** Iniciar combate: quem foi pego de surpresa (p. 231). Padrão: todos Pronto. */
   function modalIniciar() {
     const s = store.estado;
     const todos = S.combatentes(s);
     if (!todos.length) return;
-    const m = abrirModal(`<h2>Iniciar combate</h2>
-      <div class="nota">Surpresa (p. 231): quem não percebeu os inimigos fica Surpreendido até o fim da 1ª rodada e não age nela.</div>
-      <div class="lista-surpresa">${todos.map(c => `<label class="check linha-check ${c.tipo}"><input type="checkbox" data-surp="${c.id}"><span>${esc(c.nome)}</span><small>${c.tipo === 'jogador' ? 'Jogador' : 'Inimigo'}</small></label>`).join('')}</div>
-      <div class="rodape"><button class="btn" data-fechar>Cancelar</button><button class="btn pri" id="b-ini"><span class="gl">${G.espadas}</span> Iniciar combate</button></div>`);
-    m.querySelector('#b-ini').onclick = () => {
-      const surpreendidos = Array.from(m.querySelectorAll('[data-surp]:checked')).map(x => x.dataset.surp);
-      fecharModal(); acao('iniciarCombate', { surpreendidos });
+    const jog = todos.filter(c => c.tipo === 'jogador'), ini = todos.filter(c => c.tipo === 'inimigo');
+    const surp = new Set();
+    const m = abrirModal('<div id="ini-corpo" class="form-col"></div>');
+    m.classList.add('modal-iniciar');
+    const corpo = m.querySelector('#ini-corpo');
+    const igual = lista => lista.length > 0 && surp.size === lista.length && lista.every(c => surp.has(c.id));
+    const linha = c => {
+      const sp = surp.has(c.id);
+      return `<div class="linha-surp ${c.tipo}${sp ? ' surp' : ''}"><span class="nome">${esc(c.nome)}</span>
+        <div class="seg seg-surp" role="radiogroup" aria-label="${esc(c.nome)}">
+          <button type="button" role="radio" aria-checked="${!sp}" class="${sp ? '' : 'ativa'}" data-surp="${c.id}" data-v="pronto">Pronto</button>
+          <button type="button" role="radio" aria-checked="${sp}" class="${sp ? 'ativa' : ''}" data-surp="${c.id}" data-v="surpreso">Surpreso</button></div>
+        <span class="aviso-surp">${sp ? 'não age na 1ª rodada' : ''}</span></div>`;
     };
+    const grupo = (tit, lista) => lista.length ? `<div class="tit-grupo">${tit}</div>${lista.map(linha).join('')}` : '';
+    function desenhar() {
+      const nomes = todos.filter(c => surp.has(c.id)).map(c => c.nome);
+      const resumo = nomes.length ? `${nomes.length} ${nomes.length > 1 ? 'surpresos' : 'surpreso'}: ${nomes.join(', ')}.` : 'Ninguém surpreso: todos agem na 1ª rodada.';
+      const at = (v, rot, ativo, dis) => `<button type="button" class="btn peq${ativo ? ' ativo' : ''}" data-atalho="${v}" aria-pressed="${ativo}" ${dis ? 'disabled' : ''}>${rot}</button>`;
+      corpo.innerHTML = `<h2>Iniciar combate</h2>
+        <div><div class="tit-lista">Quem foi pego de surpresa?</div><div class="nota">Surpreso não age na 1ª rodada (p. 231).</div></div>
+        <div class="atalhos">${at('ninguem', 'Ninguém surpreso', !surp.size)}${at('inimigos', 'Inimigos surpresos', igual(ini), !ini.length)}${at('jogadores', 'Jogadores surpresos', igual(jog), !jog.length)}</div>
+        <div class="lista-surpresa">${grupo('Jogadores', jog)}${grupo('Inimigos', ini)}</div>
+        <div class="resumo-surp${nomes.length ? ' tem' : ''}" aria-live="polite">${esc(resumo)}</div>
+        <div class="rodape"><button type="button" class="btn" data-fechar>Cancelar</button><button type="button" class="btn pri" id="b-ini"><span class="gl">${G.espadas}</span> Iniciar combate</button></div>`;
+      corpo.querySelector('[data-fechar]').onclick = fecharModal;
+      corpo.querySelectorAll('[data-surp]').forEach(b => b.onclick = () => {
+        if (b.dataset.v === 'surpreso') surp.add(b.dataset.surp); else surp.delete(b.dataset.surp);
+        desenhar(); const f = corpo.querySelector(`[data-surp="${b.dataset.surp}"][data-v="${b.dataset.v}"]`); if (f) f.focus();
+      });
+      corpo.querySelectorAll('[data-atalho]').forEach(b => b.onclick = () => {
+        surp.clear();
+        const lista = b.dataset.atalho === 'inimigos' ? ini : b.dataset.atalho === 'jogadores' ? jog : [];
+        lista.forEach(c => surp.add(c.id));
+        desenhar();
+      });
+      corpo.querySelector('#b-ini').onclick = () => { const surpreendidos = Array.from(surp); fecharModal(); acao('iniciarCombate', { surpreendidos }); };
+    }
+    desenhar();
+    if (!celular()) corpo.querySelector('#b-ini').focus();
+  }
+
+  /** Compartilhar: link público (só leitura) da tela dos jogadores. Em modo local, só o link deste computador. */
+  function modalCompartilhar() {
+    const base = location.href.split(/[?#]/)[0].replace(/[^/]*$/, '');
+    let erro = '', ocupado = false;
+    const m = abrirModal('<div id="comp-corpo" class="form-col"></div>');
+    const corpo = m.querySelector('#comp-corpo');
+    function copiar(link, btn) {
+      const ok = () => { btn.textContent = 'Copiado'; setTimeout(() => { if (btn.isConnected) btn.textContent = 'Copiar link'; }, 1600); };
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(link).then(ok, () => { selecionar(); });
+      else selecionar();
+      function selecionar() { const i = corpo.querySelector('#comp-link'); i.focus(); i.select(); try { if (document.execCommand('copy')) ok(); } catch (e) { /* o texto fica selecionado */ } }
+    }
+    function desenhar() {
+      const local = !S.Sync.online();
+      const codigo = store.codigo;
+      const link = local ? base + 'display.html?mesa=' + encodeURIComponent(store.mesaId) : codigo ? base + 'display.html?c=' + codigo : '';
+      const podeEnviar = !!navigator.share;
+      corpo.innerHTML = `<h2>Compartilhar com os jogadores</h2>
+        ${local ? `<p class="texto">Para os jogadores abrirem a tela no próprio celular, o app precisa estar no modo online (Supabase configurado em js/config.js e login do mestre).</p>
+          <div class="nota">Neste computador, a tela dos jogadores abre por este link:</div>`
+        : `<p class="texto">Os jogadores veem a tela dos jogadores no celular, só leitura. Inimigos ocultos não aparecem.</p>`}
+        ${link ? `<div class="linha-form"><input type="text" id="comp-link" readonly value="${esc(link)}" aria-label="Link da tela dos jogadores"></div>
+          <div class="linha-form"><button type="button" class="btn pri" id="comp-copiar">Copiar link</button>
+            ${!local && podeEnviar ? '<button type="button" class="btn" id="comp-enviar">Enviar…</button>' : ''}
+            ${local ? '<button type="button" class="btn" id="comp-abrir">Abrir aqui</button>' : ''}</div>`
+        : `<div class="nota">Esta mesa não está compartilhada.</div><div class="linha-form"><button type="button" class="btn pri" id="comp-criar" ${ocupado ? 'disabled' : ''}>Criar link</button></div>`}
+        ${!local && codigo ? `<div class="linha-form comp-gerir"><button type="button" class="btn" id="comp-novo" ${ocupado ? 'disabled' : ''}>Gerar novo link</button>
+            <button type="button" class="btn perigo" id="comp-parar" ${ocupado ? 'disabled' : ''}>Parar de compartilhar</button></div>
+          <div class="nota">Gerar novo link troca o código: o link antigo para de funcionar.</div>` : ''}
+        <div class="erro">${esc(erro)}</div>
+        <div class="rodape"><button type="button" class="btn" data-fechar>Fechar</button></div>`;
+      corpo.querySelector('[data-fechar]').onclick = fecharModal;
+      const q = sel => corpo.querySelector(sel);
+      if (q('#comp-copiar')) q('#comp-copiar').onclick = ev => copiar(link, ev.currentTarget);
+      if (q('#comp-enviar')) q('#comp-enviar').onclick = () => navigator.share({ title: store.estado.nome + ' · Tela dos jogadores', url: link }).catch(() => {});
+      if (q('#comp-abrir')) q('#comp-abrir').onclick = () => abrirDisplay();
+      const mudar = fn => async () => {
+        ocupado = true; erro = ''; desenhar();
+        try { store.definirCodigo(await fn()); } catch (e) { erro = traduzErro(e); }
+        ocupado = false; if (corpo.isConnected) desenhar();
+      };
+      if (q('#comp-criar')) q('#comp-criar').onclick = mudar(() => S.Sync.compartilhar(store.mesaId));
+      if (q('#comp-novo')) q('#comp-novo').onclick = mudar(() => S.Sync.compartilhar(store.mesaId));
+      if (q('#comp-parar')) q('#comp-parar').onclick = mudar(() => S.Sync.pararCompartilhar(store.mesaId).then(() => null));
+    }
+    desenhar();
   }
 
   function modalInimigo() {

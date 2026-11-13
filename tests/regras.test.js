@@ -314,4 +314,37 @@ t('estado salvo antigo: campos faltando recebem padrões', () => {
   assert.strictEqual(s.combate.rodada, 3);
   assert.strictEqual(R.ordenarIniciativa(s.jogadores, s.combate.inis)[0], 'x');
 });
+t('estado salvo antigo ganha ui.passos (Primeiros passos) sem perder dados', () => {
+  const s = S.normalizar({ nome: 'Velha', jogadores: [] });
+  assert.deepStrictEqual(s.ui.passos, { tela: false, combate: false, dispensado: false });
+  const s2 = S.normalizar({ ui: { passos: { tela: true } } });
+  assert.strictEqual(s2.ui.passos.tela, true);
+  assert.strictEqual(s2.ui.passos.dispensado, false);
+});
+t('iniciar combate e adicionar inimigo marcam o passo "Prepare um combate"', () => {
+  const s = mesa();
+  A.addInimigo(s, { nome: 'Goblin', pv: 5 }, seq([0.5]));
+  assert.strictEqual(s.ui.passos.combate, true);
+});
+t('link público: estado sem inimigos ocultos, sem histórico; a vez continua certa', () => {
+  const s = mesa();
+  A.addInimigo(s, { nome: 'Goblin', pv: 5 }, seq([0.5]));
+  A.addInimigo(s, { nome: 'Assassino', pv: 9, visivel: false }, seq([0.5]));
+  A.iniciarCombate(s, {}, seq([0.9, 0.1, 0.5, 0.3]));
+  const oculto = s.combate.inimigos.find(i => i.nome === 'Assassino');
+  const p = S.estadoPublico(s);
+  assert.ok(!p.combate.inimigos.some(i => i.id === oculto.id));
+  assert.ok(!(oculto.id in p.combate.inis));
+  assert.deepStrictEqual(p.combate.ocultos, [oculto.id]);
+  assert.strictEqual(p.log, undefined); assert.strictEqual(p.recentes, undefined);
+  assert.deepStrictEqual(p.combate.ordem, s.combate.ordem, 'ordem mantém os ids (a tela mostra ??? na vez do oculto)');
+  assert.strictEqual(s.combate.inimigos.length, 2, 'original intacto');
+});
+t('código do link: 14 caracteres sem ambíguos', () => {
+  for (let i = 0; i < 50; i++) {
+    const c = S.Sync.gerarCodigo();
+    assert.strictEqual(c.length, 14);
+    assert.ok(/^[a-hjkmnp-z2-9]+$/.test(c), c);
+  }
+});
 console.log(ok + ' testes ok');

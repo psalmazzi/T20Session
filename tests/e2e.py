@@ -24,9 +24,81 @@ def ok(cond, msg):
         falhas.append(msg)
 
 
+def cdn_bloqueado(m):
+    """js/config.js tem Supabase configurado e o CDN não é alcançável neste ambiente:
+    só a falha de carregar esse script é esperada (o app cai no modo local)."""
+    url = (m.location or {}).get('url', '') if hasattr(m, 'location') else ''
+    return 'ERR_TUNNEL_CONNECTION_FAILED' in m.text and ('jsdelivr' in url or 'supabase' in url or not url)
+
+
 def vigiar(pg, nome):
     pg.on('pageerror', lambda e: erros.append(f'{nome} pageerror: {e}'))
-    pg.on('console', lambda m: m.type == 'error' and erros.append(f'{nome} console: {m.text}'))
+    pg.on('console', lambda m: m.type == 'error' and not cdn_bloqueado(m) and erros.append(f'{nome} console: {m.text}'))
+
+
+def novato(b, largura, altura, suf):
+    """Prints da 1ª abertura (modo Dicas ligado sozinho) em contexto limpo."""
+    ctx = b.new_context(viewport={'width': largura, 'height': altura})
+    g = ctx.new_page(); vigiar(g, f'NOVATO-{suf}')
+    g.goto(URL + '/index.html')
+    g.wait_for_selector('#f-mesa')
+    ok(g.evaluate("document.body.classList.contains('dicas')"), f'{suf}: 1ª abertura liga o modo Dicas')
+    ok('Nome da campanha' in g.get_attribute('#f-mesa input', 'placeholder'), f'{suf}: placeholder da mesa explica')
+    g.screenshot(path=f'{SHOTS}/novato-01-mesas-{suf}.png')
+    g.fill('input[name=nome]', 'Mesa Teste'); g.click('#f-mesa button.pri')
+    g.wait_for_selector('.passos')
+    ok('0 de 3' in g.inner_text('.passos'), f'{suf}: Primeiros passos 0 de 3')
+    ok(g.locator('.vazio').is_hidden(), f'{suf}: card substitui o vazio antigo')
+    if largura > 720:
+        ok(g.locator('.topo .sync-rot').inner_text() == 'Local', f'{suf}: rótulo Local no cabeçalho')
+        top = g.evaluate("Array.from(document.querySelectorAll('.topo > *')).filter(e => e.offsetParent).map(e => e.getBoundingClientRect()).reduce((a, r) => [Math.min(a[0], r.top), Math.max(a[1], r.bottom), Math.max(a[2], r.right)], [1e9, 0, 0])")
+        ok(top[1] - top[0] <= 52 and top[2] <= largura, f'{suf}: cabeçalho em uma linha e sem estourar ({top})')
+    g.screenshot(path=f'{SHOTS}/novato-02-mesa-vazia-{suf}.png')
+    g.locator('header [data-a=modo][data-v=combate]').click()
+    g.wait_for_selector('.linha-vazia')
+    ok('pri' not in g.get_attribute('[data-a=iniciar]:visible', 'class'), f'{suf}: Iniciar sem destaque quando não há inimigos')
+    g.screenshot(path=f'{SHOTS}/novato-03-combate-vazio-{suf}.png')
+    g.locator('header [data-a=modo][data-v=grupo]').click()
+    g.locator('[data-a=novo]:visible').first.click()
+    g.wait_for_selector('#f-pj')
+    time.sleep(0.2)
+    g.screenshot(path=f'{SHOTS}/novato-04-modal-pj-{suf}.png', full_page=True)
+    g.fill('#f-pj [name=nome]', 'Kael'); g.fill('#f-pj [name=pvMax]', '30'); g.fill('#f-pj [name=pmMax]', '12'); g.click('#f-pj button.pri')
+    g.wait_for_selector('.passos.curto')
+    ok('1 de 3' in g.inner_text('.passos.curto'), f'{suf}: passo 1 feito, card encolhe')
+    g.screenshot(path=f'{SHOTS}/novato-05-grupo1-{suf}.png')
+    g.locator('header [data-a=modo][data-v=combate]').click()
+    g.locator('[data-a=addini]:visible').first.click()
+    g.fill('#f-ini [name=nome]', 'Goblin'); g.fill('#f-ini [name=qtd]', '2'); g.click('#f-ini button.pri')
+    ok('pri' in g.get_attribute('[data-a=iniciar]:visible', 'class'), f'{suf}: Iniciar em destaque com inimigos')
+    g.screenshot(path=f'{SHOTS}/novato-06-combate-antes-{suf}.png')
+    g.locator('[data-a=iniciar]:visible').first.click()
+    g.wait_for_selector('.modal-iniciar')
+    ok('Ninguém surpreso: todos agem' in g.inner_text('.resumo-surp'), f'{suf}: modal Iniciar padrão = ninguém surpreso')
+    g.click('[data-atalho=inimigos]')
+    ok(g.inner_text('.resumo-surp').startswith('2 surpresos: Goblin 1, Goblin 2'), f'{suf}: atalho Inimigos surpresos')
+    time.sleep(0.2)
+    g.screenshot(path=f'{SHOTS}/novato-07-modal-iniciar-{suf}.png')
+    g.click('#b-ini')
+    g.wait_for_selector('.painel-turno .rodada')
+    time.sleep(0.3)
+    g.screenshot(path=f'{SHOTS}/novato-08-combate-ativo-{suf}.png')
+    g.locator('header [data-a=menu]').click()
+    g.click('.folha [data-f=guia]')
+    g.wait_for_selector('.guia')
+    ok('regra da casa' in g.inner_text('.guia').lower() and 'p. 231' in g.inner_text('.guia'), f'{suf}: Guia rápido explica a regra do livro')
+    time.sleep(0.3)
+    g.screenshot(path=f'{SHOTS}/novato-09-guia-{suf}.png')
+    g.click('.folha [data-f=fechar] >> nth=-1')
+    if largura > 720:
+        g.click('header [data-a=compartilhar]')
+    else:
+        g.locator('header [data-a=menu]').click(); g.click('.folha [data-v=compartilhar]')
+    g.wait_for_selector('#comp-link')
+    ok('modo online' in g.inner_text('.modal') and 'display.html?mesa=' in g.input_value('#comp-link'), f'{suf}: Compartilhar em modo local oferece só o link deste computador')
+    time.sleep(0.2)
+    g.screenshot(path=f'{SHOTS}/novato-10-compartilhar-{suf}.png')
+    ctx.close()
 
 
 srv = subprocess.Popen([sys.executable, '-m', 'http.server', str(PORTA), '-d', RAIZ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -35,6 +107,16 @@ try:
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path=CHROME, args=['--no-sandbox'])
         ctx = b.new_context(viewport={'width': 1366, 'height': 768})
+        novato(b, 1366, 768, '1366')
+        novato(b, 390, 844, '390')
+        esp = b.new_page(viewport={'width': 1366, 'height': 768}); vigiar(esp, 'DISPLAY-ESPERA')
+        esp.goto(URL + '/display.html?mesa=inexistente')
+        ok('Aguardando' in esp.inner_text('body'), 'tela dos jogadores: "Aguardando" nos primeiros segundos')
+        esp.wait_for_selector('.d-espera', timeout=8000)
+        ok('Tela dos jogadores' in esp.inner_text('.d-espera'), 'tela dos jogadores: explicação depois de 5 s')
+        esp.screenshot(path=f'{SHOTS}/novato-11-display-espera.png')
+        esp.close()
+
         gm = ctx.new_page(); vigiar(gm, 'GM')
         gm.goto(URL + '/index.html')
 
@@ -139,7 +221,17 @@ try:
         ok(len(estado()['combate']['inimigos']) == 4, '4 inimigos adicionados')
         ok(estado()['combate']['inimigosEmGrupo'] is True, 'inimigos em grupo ligado por padrão')
         gm.click('.painel-turno [data-a=iniciar]')
-        gm.check(f'[data-surp="{lyra}"]')
+        gm.wait_for_selector('.modal-iniciar')
+        ok([t.lower() for t in gm.locator('.modal-iniciar .tit-grupo').all_inner_texts()] == ['jogadores', 'inimigos'], 'modal Iniciar agrupa Jogadores / Inimigos')
+        ok(gm.locator('[data-surp][data-v=pronto].ativa').count() == 7, 'todos começam Pronto')
+        gm.click('[data-atalho=jogadores]')
+        ok(gm.inner_text('.resumo-surp').startswith('3 surpresos'), 'atalho Jogadores surpresos')
+        gm.click('[data-atalho=ninguem]')
+        ok(gm.locator('[data-surp][data-v=surpreso].ativa').count() == 0, 'atalho Ninguém surpreso limpa')
+        gm.click(f'[data-surp="{lyra}"][data-v=surpreso]')
+        ok(gm.inner_text('.resumo-surp') == '1 surpreso: Lyra.', 'resumo vivo: "1 surpreso: Lyra."')
+        ok('não age na 1ª rodada' in gm.inner_text('.linha-surp.surp'), 'linha surpresa avisa "não age na 1ª rodada"')
+        gm.screenshot(path=f'{SHOTS}/gm-iniciar-1366.png')
         gm.click('#b-ini')
         s = estado()
         ok(s['combate']['ativo'] and s['combate']['rodada'] == 1, 'combate iniciado')
@@ -153,6 +245,17 @@ try:
                 break
             vistos.append(vez_nome())
         ok('Lyra' not in vistos, f'Lyra pulada na 1ª rodada (vez: {", ".join(vistos)})')
+        # clicar no nome não passa a vez; a ação explícita aparece ao passar o mouse
+        antes = vez_nome()
+        outro = next(n for n in ('Kael', 'Brom', 'Lyra') if n != antes)
+        gm.click(f'.linha-ini:has-text("{outro}") .ini-nome .nome')
+        ok(vez_nome() == antes, f'clicar no nome de {outro} não passa a vez')
+        gm.hover(f'.linha-ini:has-text("{outro}") .ini-nome .nome')
+        ok(gm.locator(f'.linha-ini:has-text("{outro}") .dar-vez').is_visible(), '"Passar a vez para cá" aparece no hover')
+        gm.click(f'.linha-ini:has-text("{outro}") .dar-vez')
+        ok(vez_nome() == outro, f'"Passar a vez para cá" passa a vez para {outro}')
+        gm.hover(f'.linha-ini:has-text("{antes}") .ini-nome .nome'); gm.click(f'.linha-ini:has-text("{antes}") .dar-vez')
+        ok(vez_nome() == antes, 'vez devolvida')
         ok(estado()['combate']['rodada'] == 2, 'rodada 2')
         ok('surpreendido' not in conds('Lyra'), 'Surpreendido terminou no fim da 1ª rodada')
 

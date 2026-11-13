@@ -76,3 +76,24 @@ body.display { font-size: clamp(16px, 1.25vw, 24px); cursor: default; user-selec
 @media (max-width: 1500px) {
   .d-ordem .d-cond small { display: none; }
 }
+
+/* Espera (sem mesa há 5 s) e link público inválido */
+.d-espera { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: .5em; color: var(--text-2); font-size: 1.1em; padding: 0 1em; }
+.d-espera b { color: var(--text); font-size: 1.2em; margin-bottom: .3em; }
+.d-espera p { margin: 0; max-width: 34em; }
+.d-espera .d-nota { color: var(--text-3); font-size: .85em; margin-top: .4em; }
+.d-ic { display: inline-flex; vertical-align: -.15em; color: var(--text); }
+.d-ic svg { width: 1.1em; height: 1.1em; }
+/* Celular dos jogadores (link compartilhado): coluna única */
+@media (max-width: 720px) {
+  html, body { overflow: auto; height: auto; }
+  body.display { font-size: 15px; }
+  .d-raiz { height: auto; min-height: 100vh; padding: 14px 20px; }
+  .d-corpo { overflow: visible; }
+  .d-vez { flex-wrap: wrap; }
+  .d-vez .quem { font-size: 2em; }
+  .d-vez .prox { margin-left: 0; width: 100%; }
+  .d-linha { grid-template-columns: 2.4em minmax(0, 1fr); gap: .3em .8em; }
+  .d-linha .d-recs, .d-linha .d-cs { grid-column: 2; }
+  .d-grade { grid-template-columns: 1fr; }
+}

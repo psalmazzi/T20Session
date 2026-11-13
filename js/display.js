@@ -8,12 +8,18 @@
   const sinal = n => (n >= 0 ? '+' : '') + n;
   const fmtNum = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR');
 
-  let mesaId = new URLSearchParams(location.search).get('mesa') || S.LS.get('t20s.mesaAtiva');
+  const params = new URLSearchParams(location.search);
+  // ?c=<codigo>: link público do mestre (celular dos jogadores). Nunca pede login; só lê.
+  const codigo = (params.get('c') || '').trim() || null;
+  let mesaId = codigo ? null : (params.get('mesa') || S.LS.get('t20s.mesaAtiva'));
   let estado = mesaId ? S.LS.get('t20s.mesa.' + mesaId) : null;
   let recebeu = !!estado;
+  let linkInvalido = false;
+  const inicio = Date.now();
 
   function receber(novo, id) {
     if (!novo) return;
+    if (codigo && id) return; // no link público só vale o que vem do canal pub-<codigo>
     if (id && id !== mesaId) { mesaId = id; estado = null; assinarRemoto(); }
     if (estado && novo.origem === estado.origem && (novo.rev || 0) < (estado.rev || 0)) return; // chegou atrasado
     estado = novo; recebeu = true; render();
@@ -37,9 +43,20 @@
     try { const e = await S.Sync.carregar(mesaId); if (e && (!estado || (e.rev || 0) > (estado.rev || 0) || e.origem !== estado.origem)) receber(e); } catch (e) { /* offline: fica no cache */ }
     S.Sync.assinar(mesaId, e => receber(e));
   }
+  async function iniciarPublica() {
+    if (!S.Sync.online()) { linkInvalido = 'offline'; render(); return; }
+    S.Sync.assinarPublica(codigo, e => { if (!estado || (e.rev || 0) >= (estado.rev || 0) || e.origem !== estado.origem) { estado = e; recebeu = true; render(); } });
+    try {
+      const r = await S.Sync.carregarPublica(codigo);
+      if (r && r.estado) { if (!estado) { estado = r.estado; recebeu = true; } }
+      else if (!estado) linkInvalido = true;
+    } catch (e) { if (!estado) linkInvalido = 'rede'; }
+    render();
+  }
   (async function () {
     await carregarSupabase();
     await S.Sync.iniciar();
+    if (codigo) { iniciarPublica(); return; }
     if (S.Sync.online() && S.Sync.usuario) {
       if (!mesaId) { try { const m = await S.Sync.listarMesas(); if (m[0]) mesaId = m[0].id; } catch (e) { /* sem rede */ } }
       assinarRemoto();
@@ -90,10 +107,23 @@
   }
   function classePV(j) { const e = R.estadoPV(j.pv.atual, j.pv.max); return e === 'critico' ? 'critico' : (e === 'caido' || e === 'morto') ? 'zerado' : ''; }
 
+  const MONITOR = '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="10" rx="1.5"/><path d="M7 17h6M10 13.5V17"/></svg>';
   function render() {
     if (!raiz) return;
     if (!estado) {
-      raiz.innerHTML = `<div class="d-raiz"><div class="d-msg">${mesaId ? 'Aguardando a tela do mestre…' : 'Abra uma mesa na tela do mestre e clique em “Tela dos jogadores”.'}</div></div>`;
+      let msg;
+      if (codigo && linkInvalido) {
+        msg = `<div class="d-espera"><b>T20Session · Tela dos jogadores</b>
+          <p>${linkInvalido === true ? 'Este link não está mais ativo. Peça ao mestre o link novo.' : linkInvalido === 'offline' ? 'Este link precisa de internet para funcionar.' : 'Sem conexão com o servidor. Tentando de novo ao recarregar a página.'}</p></div>`;
+      } else if (Date.now() - inicio < 5000) {
+        msg = '<div class="d-msg">Aguardando a tela do mestre…</div>';
+      } else {
+        msg = `<div class="d-espera"><b>T20Session · Tela dos jogadores</b>
+          <p>Esta tela mostra aos jogadores o grupo e a ordem do combate.</p>
+          <p>Na tela do mestre, abra a mesa e clique em <span class="d-ic">${MONITOR}</span> Tela dos jogadores.</p>
+          <p class="d-nota">Arraste esta janela para a TV · duplo clique = tela cheia</p></div>`;
+      }
+      raiz.innerHTML = `<div class="d-raiz">${msg}</div>`;
       return;
     }
     const s = S.normalizar(estado), cb = s.combate;
@@ -133,10 +163,12 @@
     const cb = s.combate;
     const todos = s.jogadores.concat(cb.inimigos || []);
     const mapa = Object.fromEntries(todos.map(c => [c.id, c]));
-    const ordem = (cb.ordem || []).filter(id => mapa[id]);
+    // ocultos: ids de inimigos ocultos que o link público não traz (a vez deles vira "???")
+    const ocultos = new Set(cb.ocultos || []);
+    const ordem = (cb.ordem || []).filter(id => mapa[id] || ocultos.has(id));
     const vezId = ordem[cb.turno];
     const visivel = c => c.tipo !== 'inimigo' || c.visivel;
-    const visiveis = ordem.map(id => mapa[id]).filter(visivel);   // oculto: nem placeholder
+    const visiveis = ordem.map(id => mapa[id]).filter(c => c && visivel(c));   // oculto: nem placeholder
     const vez = mapa[vezId];
     const vezVisivel = vez && visivel(vez);
     // próximo visível que vai agir
@@ -170,6 +202,7 @@
       <div class="d-ordem">${linhas}</div>`;
   }
   window.addEventListener('resize', () => render());
+  setTimeout(() => { if (!estado) render(); }, 5100); // troca a espera pela explicação (sem mesa há 5 s)
 
   // Tela cheia com duplo clique; mantém a tela acesa
   document.addEventListener('dblclick', () => { if (!document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); else if (document.exitFullscreen) document.exitFullscreen().catch(() => {}); });
