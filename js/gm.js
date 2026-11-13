@@ -61,6 +61,12 @@
   async function boot() {
     await carregarSupabase();
     await S.Sync.iniciar();
+    if (S.Sync.online() && /access_token|error_description|type=recovery/.test(location.hash)) {
+      // limpa o token do link do e-mail da barra de endereço
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* ok */ }
+    }
+    if (S.Sync.online() && S.Sync.recuperando) return telaNovaSenha();
+    if (S.Sync.online() && S.Sync.erroLink) { const m = S.Sync.erroLink; S.Sync.erroLink = null; if (!S.Sync.usuario) return telaLogin(traduzErro({ message: m })); }
     if (S.Sync.online() && !S.Sync.usuario) return telaLogin();
     const ativa = S.LS.get('t20s.mesaAtiva');
     if (ativa) { try { await abrirMesa(ativa); return; } catch (e) { /* mesa sumiu */ } }
@@ -85,6 +91,7 @@
       <div class="erro" id="login-erro">${esc(msg || '')}</div>
       <button class="btn pri" type="submit">Entrar</button>
       <button class="btn" type="button" id="b-cadastrar">Criar conta</button>
+      <button class="link-btn" type="button" id="b-esqueci">Esqueci minha senha</button>
     </form></div>`;
     const f = document.getElementById('f-login');
     const erro = document.getElementById('login-erro');
@@ -92,6 +99,15 @@
       ev.preventDefault(); erro.textContent = '';
       try { await S.Sync.entrar(f.email.value.trim(), f.senha.value); boot(); }
       catch (e) { erro.textContent = traduzErro(e); }
+    };
+    document.getElementById('b-esqueci').onclick = async () => {
+      erro.textContent = '';
+      const email = f.email.value.trim();
+      if (!email || !f.email.checkValidity()) { erro.textContent = 'Digite seu e-mail acima e clique de novo em "Esqueci minha senha".'; f.email.focus(); return; }
+      try {
+        await S.Sync.esqueciSenha(email);
+        erro.innerHTML = '<span class="ok">Pronto! Se existir uma conta com esse e-mail, chegou um link para criar uma senha nova. Abra o e-mail neste aparelho. Não achou? Veja o spam.</span>';
+      } catch (e) { erro.textContent = traduzErro(e); }
     };
     document.getElementById('b-cadastrar').onclick = async () => {
       if (!f.reportValidity()) return;
@@ -103,8 +119,35 @@
       } catch (e) { erro.textContent = traduzErro(e); }
     };
   }
+  /** Aberta pelo link do e-mail "esqueci minha senha". */
+  function telaNovaSenha(msg) {
+    tela = 'login';
+    fecharFolha(); fecharModal();
+    app.innerHTML = `<div class="centro"><form class="caixa" id="f-nova">
+      <h1>Nova senha</h1><div class="sub">Escolha a senha nova da sua conta.</div>
+      <label class="campo">Senha nova<input type="password" name="senha" required minlength="6" autocomplete="new-password"></label>
+      <label class="campo">Repita a senha<input type="password" name="senha2" required minlength="6" autocomplete="new-password"></label>
+      <div class="nota">Pelo menos 6 caracteres.</div>
+      <div class="erro" id="nova-erro">${esc(msg || '')}</div>
+      <button class="btn pri" type="submit">Salvar senha e entrar</button>
+    </form></div>`;
+    const f = document.getElementById('f-nova');
+    f.senha.focus();
+    f.onsubmit = async ev => {
+      ev.preventDefault();
+      const erro = document.getElementById('nova-erro'); erro.textContent = '';
+      if (f.senha.value !== f.senha2.value) { erro.textContent = 'As duas senhas não são iguais.'; return; }
+      try { await S.Sync.novaSenha(f.senha.value); boot(); }
+      catch (e) { erro.textContent = traduzErro(e); }
+    };
+  }
   function traduzErro(e) {
     const m = (e && e.message) || String(e);
+    if (/rate limit|only request this after|too many/i.test(m)) return 'Muitos pedidos seguidos. Espere alguns minutos e tente de novo.';
+    if (/expired|invalid or has expired|otp/i.test(m)) return 'O link do e-mail expirou ou já foi usado. Peça outro em "Esqueci minha senha".';
+    if (/should be different/i.test(m)) return 'A senha nova precisa ser diferente da antiga.';
+    if (/Password should be at least/i.test(m)) return 'A senha precisa ter pelo menos 6 caracteres.';
+    if (/Auth session missing/i.test(m)) return 'O link expirou. Peça outro em "Esqueci minha senha".';
     if (/Invalid login/i.test(m)) return 'E-mail ou senha incorretos.';
     if (/Email not confirmed/i.test(m)) return 'Confirme o e-mail antes de entrar (veja sua caixa de entrada).';
     if (/already registered/i.test(m)) return 'Esse e-mail já tem conta. Use Entrar.';

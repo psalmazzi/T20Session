@@ -46,8 +46,11 @@
     createClient() {
       return {
         auth: {
-          getSession: () => pronto({ data: { session: { user: { id: 'u1', email: 'mestre@teste' } } } }),
-          signOut: () => pronto({}), signInWithPassword: () => pronto({ data: { user: { id: 'u1' } } })
+          getSession: () => pronto({ data: { session: (window.__semSessao && !/access_token/.test(location.hash)) ? null : { user: { id: 'u1', email: 'mestre@teste' } } } }),
+          signOut: () => pronto({}), signInWithPassword: () => pronto({ data: { user: { id: 'u1' } } }),
+          onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+          resetPasswordForEmail: (email, op) => { window.__reset = { email, op }; return pronto({ data: {}, error: null }); },
+          updateUser: (u) => { window.__novaSenha = u.password; window.__semSessao = false; return pronto({ data: { user: { id: 'u1', email: 'mestre@teste' } }, error: null }); }
         },
         from: consulta,
         channel: canal,

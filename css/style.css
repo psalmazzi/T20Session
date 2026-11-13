@@ -472,3 +472,7 @@ details.poderes .poderes-lista { display: flex; flex-direction: column; gap: 6px
   .form-grade.cinco { grid-template-columns: repeat(2, 1fr); }
   .painel-turno .grupo-btn [data-a=iniciar] { display: none; }
 }
+/* Esqueci minha senha */
+.link-btn { background: none; border: 0; color: var(--text-2); font-size: .9rem; text-decoration: underline; text-underline-offset: 3px; padding: 6px; align-self: center; cursor: pointer; }
+.link-btn:hover { color: var(--text); }
+.erro .ok { color: var(--ok); }

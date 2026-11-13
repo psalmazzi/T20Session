@@ -402,9 +402,17 @@
   // ---------- Sincronização / persistência ----------
   const Sync = {
     sb: null, usuario: null, modo: 'local', canalRT: null,
+    recuperando: false, erroLink: null,
     async iniciar() {
+      if (this.sb) { const { data } = await this.sb.auth.getSession(); this.usuario = data && data.session ? data.session.user : null; return this; }
       if (CFG.supabaseUrl && CFG.supabaseAnonKey && raiz.supabase && raiz.supabase.createClient) {
+        // Link do e-mail "esqueci minha senha": chega com #...type=recovery (ou #error=... se expirou)
+        const hash = (raiz.location && raiz.location.hash) || '';
+        if (/type=recovery/.test(hash)) this.recuperando = true;
+        const err = hash.match(/error_description=([^&]+)/);
+        if (err) this.erroLink = decodeURIComponent(err[1].replace(/\+/g, ' '));
         this.sb = raiz.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth: { persistSession: true, storageKey: 't20s.auth' } });
+        this.sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') this.recuperando = true; });
         this.modo = 'supabase';
         const { data } = await this.sb.auth.getSession();
         this.usuario = data && data.session ? data.session.user : null;
@@ -421,6 +429,17 @@
       if (r.error) throw r.error;
       this.usuario = r.data.session ? r.data.user : null;
       return { confirmar: !r.data.session };
+    },
+    /** Envia o e-mail com o link para criar uma senha nova. O link volta para esta página. */
+    async esqueciSenha(email) {
+      const volta = raiz.location.origin + raiz.location.pathname;
+      const r = await this.sb.auth.resetPasswordForEmail(email, { redirectTo: volta });
+      if (r.error) throw r.error;
+    },
+    async novaSenha(senha) {
+      const r = await this.sb.auth.updateUser({ password: senha });
+      if (r.error) throw r.error;
+      this.recuperando = false; this.usuario = r.data.user;
     },
     async sair() { if (this.sb) await this.sb.auth.signOut(); this.usuario = null; },
     async listarMesas() {
