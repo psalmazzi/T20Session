@@ -1,0 +1,65 @@
+/* Tela dos jogadores: só leitura, letras grandes para TV / segundo monitor */
+html, body { height: 100%; overflow: hidden; }
+body.display { font-size: clamp(15px, 1.25vw, 26px); cursor: default; user-select: none; }
+.d-raiz { height: 100vh; display: flex; flex-direction: column; padding: 1.4vw 2vw; gap: 1.2vw; }
+.d-topo { display: flex; align-items: baseline; gap: 1.5vw; }
+.d-topo h1 { font-size: 2.1em; color: var(--accent); }
+.d-topo .d-info { margin-left: auto; font-family: var(--serif); font-size: 1.6em; color: var(--text-2); }
+.d-topo .d-info b { color: var(--accent); }
+.d-corpo { flex: 1; min-height: 0; overflow: hidden; }
+.d-msg { height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--text-2); font-size: 1.4em; }
+
+/* Grupo */
+.d-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22em), 1fr)); gap: 1.1vw; align-content: start; height: 100%; }
+.d-card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.8em; padding: 0.9em 1em; display: flex; flex-direction: column; gap: 0.6em; }
+.d-card.caido { background: var(--danger-bg); border-color: var(--danger); }
+.d-card.morto { background: #2A2A2A; filter: grayscale(.7); }
+.d-nome { display: flex; align-items: baseline; gap: .5em; }
+.d-nome b { font-size: 1.45em; font-family: var(--serif); }
+.d-nome span { color: var(--text-2); }
+.d-barra { display: grid; grid-template-columns: 2.6em 1fr; align-items: center; gap: .5em; }
+.d-barra .rot { font-weight: 800; }
+.d-barra.pv .rot { color: var(--pv); } .d-barra.pm .rot { color: var(--pm); }
+.d-barra .trilho { position: relative; height: 1.7em; background: var(--surface-2); border-radius: .4em; overflow: hidden; }
+.d-barra .trilho i { position: absolute; inset: 0 auto 0 0; transition: width .4s ease; }
+.d-barra.pv .trilho i { background: linear-gradient(90deg, #8f2a2e, var(--pv)); }
+.d-barra.pm .trilho i { background: linear-gradient(90deg, #1f4f99, var(--pm)); }
+.d-barra.vago .trilho i { background: linear-gradient(90deg, #6b2b2e, #b0484c); }
+.d-barra .trilho span { position: relative; display: block; text-align: center; line-height: 1.7em; font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px #000; }
+.d-barra.critico .trilho { animation: pulso 1.6s infinite; }
+.d-stats { display: flex; gap: .5em; flex-wrap: wrap; }
+.d-stat { background: var(--surface-2); border-radius: .4em; padding: .15em .6em; color: var(--text-2); }
+.d-stat b { color: var(--text); }
+.d-conds { display: flex; flex-wrap: wrap; gap: .4em; }
+.d-cond { background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: .5em; padding: .15em .55em; line-height: 1.25; }
+.d-cond b { font-weight: 700; }
+.d-cond small { display: block; color: var(--text-2); font-size: .78em; }
+.d-cond.perigo { background: var(--danger-bg); border-color: var(--danger); color: #FFB4B4; }
+.d-aviso { color: var(--warn); }
+.d-aviso.forte { color: #FFB4B4; font-weight: 700; }
+
+/* Combate */
+.d-vez { display: flex; align-items: center; gap: 1.2em; background: linear-gradient(90deg, rgba(224,184,79,.18), transparent); border: 1px solid var(--accent); border-radius: .8em; padding: .6em 1em; margin-bottom: 1vw; }
+.d-vez .rot { color: var(--text-2); }
+.d-vez .quem { font-family: var(--serif); font-size: 2.1em; color: var(--accent); }
+.d-vez .prox { margin-left: auto; color: var(--text-2); }
+.d-vez .prox b { color: var(--text); }
+.d-ordem { display: flex; flex-direction: column; gap: .5vw; }
+.d-linha { display: grid; grid-template-columns: 3.2em minmax(9em, 1.1fr) minmax(12em, 1.6fr) minmax(10em, 1.6fr); gap: 1em; align-items: center; background: var(--surface); border: 1px solid var(--border); border-left: .35em solid var(--border); border-radius: .7em; padding: .5em .9em; }
+.d-linha.jogador { border-left-color: var(--pm); }
+.d-linha.inimigo { border-left-color: var(--pv); }
+.d-linha.vez { border-color: var(--accent); box-shadow: 0 0 0 .12em var(--accent) inset, 0 0 1.5em rgba(224,184,79,.25); transform: scale(1.01); }
+.d-linha.derrotado { opacity: .38; }
+.d-linha.derrotado .d-n b { text-decoration: line-through; }
+.d-linha.caido { background: var(--danger-bg); }
+.d-ini { font-size: 1.6em; font-weight: 800; text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.d-linha.vez .d-ini { color: var(--accent); }
+.d-n b { font-size: 1.3em; }
+.d-n small { display: block; color: var(--text-2); }
+.d-recs { display: flex; flex-direction: column; gap: .35em; }
+.d-estado { font-weight: 800; font-size: 1.15em; }
+.d-estado.ileso { color: var(--ok); } .d-estado.ferido { color: var(--warn); } .d-estado.muito { color: #ff8a5c; } .d-estado.quase { color: var(--danger); } .d-estado.derrotado { color: var(--text-3); }
+/* compacta quando há muitos combatentes */
+.d-ordem.denso { gap: .3vw; }
+.d-ordem.denso .d-linha { padding: .3em .8em; font-size: .86em; }
+.d-ordem.denso .d-cond small { display: none; }

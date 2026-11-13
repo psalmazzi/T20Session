@@ -1,0 +1,159 @@
+/* T20Session — tema escuro (tokens de App/especificacoes/ux.md) */
+:root {
+  --bg: #0B0D10; --surface: #15181D; --surface-2: #1E232A; --border: #2C333D; --border-strong: #5E6875;
+  --text: #E8EAED; --text-2: #A7B0BC; --text-3: #8A94A1;
+  --pv: #FF6B70; --pm: #5AA2FF; --ok: #4ADE80; --warn: #FFA94D; --danger: #FF6B70; --danger-bg: #3A0D10;
+  --crit: #FFD60A; --accent: #E0B84F; --accent-ink: #1A1300;
+  --btn-dano: #B4232A; --btn-cura: #1F7A4D; --btn-pm: #2563EB;
+  --raio: 12px; --serif: "Cinzel", Georgia, "Times New Roman", serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { touch-action: manipulation; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.esconder { display: none !important; }
+h1, h2, h3 { font-family: var(--serif); letter-spacing: .02em; margin: 0; }
+
+/* ---------- Botões e campos ---------- */
+.btn { background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 10px; padding: 8px 14px; min-height: 40px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn:hover { border-color: var(--text-2); }
+.btn:active { filter: brightness(.88); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.primario { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.btn.perigo { border-color: var(--danger); color: var(--danger); }
+.btn.peq { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.btn.icone { padding: 4px 8px; min-width: 34px; justify-content: center; }
+.btn.dano { background: var(--btn-dano); border-color: var(--btn-dano); color: #fff; }
+.btn.cura { background: var(--btn-cura); border-color: var(--btn-cura); color: #fff; }
+.btn.mana { background: var(--btn-pm); border-color: var(--btn-pm); color: #fff; }
+.btn.grande { min-height: 52px; font-size: 17px; padding: 10px 22px; }
+input[type=text], input[type=number], input[type=email], input[type=password], select {
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 8px; padding: 7px 10px; min-height: 38px; width: 100%;
+}
+input:focus, select:focus, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input[type=number] { -moz-appearance: textfield; }
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+label.campo { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); }
+label.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* ---------- Estrutura da tela do mestre ---------- */
+.topo { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; background: rgba(11,13,16,.94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--border); }
+.topo h1 { font-size: 20px; color: var(--accent); cursor: pointer; }
+.topo .dia { color: var(--text-2); font-size: 14px; }
+.topo .espaco { flex: 1; }
+.abas { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+.abas button { background: none; border: 0; padding: 7px 16px; border-radius: 8px; color: var(--text-2); font-weight: 600; }
+.abas button.ativa { background: var(--accent); color: var(--accent-ink); }
+.sync { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); display: inline-block; }
+.sync.local { background: var(--text-3); }
+.sync.erro { background: var(--danger); }
+main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+.barra { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.barra .espaco { flex: 1; }
+.vazio { text-align: center; color: var(--text-2); padding: 48px 16px; border: 1px dashed var(--border-strong); border-radius: var(--raio); }
+
+/* ---------- Cards de personagem ---------- */
+.grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--raio); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.card.caido { background: var(--danger-bg); border-color: var(--danger); }
+.card.morto { background: #2A2A2A; filter: grayscale(.6); }
+.card-topo { display: flex; align-items: baseline; gap: 8px; }
+.card-topo .nome { font-weight: 700; font-size: 17px; }
+.card-topo .sub { color: var(--text-2); font-size: 13px; }
+.card-topo .acoes { margin-left: auto; display: flex; gap: 4px; }
+.stats { display: flex; gap: 6px; flex-wrap: wrap; }
+.stat { background: var(--surface-2); border-radius: 8px; padding: 3px 9px; font-size: 13px; color: var(--text-2); }
+.stat b { color: var(--text); font-size: 15px; }
+.recurso { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: center; }
+.recurso .rot { font-weight: 700; font-size: 13px; }
+.recurso.pv .rot { color: var(--pv); } .recurso.pm .rot { color: var(--pm); }
+.barra-rec { position: relative; height: 26px; background: var(--surface-2); border-radius: 7px; overflow: hidden; }
+.barra-rec i { position: absolute; inset: 0 auto 0 0; border-radius: 7px; transition: width .25s ease; }
+.pv .barra-rec i { background: linear-gradient(90deg, #8f2a2e, var(--pv)); }
+.pm .barra-rec i { background: linear-gradient(90deg, #1f4f99, var(--pm)); }
+.barra-rec span { position: relative; display: block; text-align: center; line-height: 26px; font-weight: 700; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
+.ajuste { display: flex; gap: 4px; align-items: center; }
+.ajuste input { width: 56px; min-height: 32px; padding: 4px 6px; text-align: center; }
+.ferido .barra-rec span { color: var(--warn); }
+.critico .barra-rec { animation: pulso 1.6s infinite; }
+@keyframes pulso { 50% { opacity: .6; } }
+.linha-recursos { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 14px; }
+.contador { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); border-radius: 8px; padding: 2px 4px 2px 10px; }
+.contador b { min-width: 28px; text-align: center; font-variant-numeric: tabular-nums; }
+.contador .btn { min-height: 28px; min-width: 28px; padding: 0 6px; }
+.aviso { font-size: 13px; color: var(--warn); }
+.aviso.forte { color: #FFB4B4; }
+
+/* ---------- Condições ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+.chip.perigo { background: var(--danger-bg); border-color: var(--danger); color: #FFB4B4; }
+.chip small { color: var(--text-3); }
+.chip button { background: none; border: 0; padding: 0 0 0 2px; color: var(--text-3); font-size: 15px; line-height: 1; }
+.chip button:hover { color: var(--danger); }
+.chip.add { cursor: pointer; border-style: dashed; color: var(--text-2); }
+
+/* ---------- Combate ---------- */
+.painel-turno { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: var(--raio); padding: 12px; margin-bottom: 12px; }
+.painel-turno .rodada { font-family: var(--serif); font-size: 22px; color: var(--accent); }
+.painel-turno .vez { font-size: 15px; color: var(--text-2); }
+.painel-turno .vez b { color: var(--text); }
+.opcoes { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); margin-bottom: 12px; }
+.lista-ini { display: flex; flex-direction: column; gap: 8px; }
+.linha-ini { display: grid; grid-template-columns: 64px minmax(160px, 1.1fr) minmax(220px, 1.4fr) minmax(200px, 1.2fr) auto; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-left: 5px solid var(--border); border-radius: var(--raio); padding: 10px 12px; }
+.linha-ini.jogador { border-left-color: var(--pm); }
+.linha-ini.inimigo { border-left-color: var(--pv); }
+.linha-ini.vez { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset, 0 0 24px rgba(224,184,79,.18); }
+.linha-ini.derrotado { opacity: .45; }
+.linha-ini.caido { background: var(--danger-bg); }
+.linha-ini.oculto .nome::after { content: " (oculto)"; color: var(--text-3); font-weight: 400; font-size: 12px; }
+.ini-num { text-align: center; }
+.ini-num input { width: 56px; text-align: center; font-size: 20px; font-weight: 800; padding: 2px; min-height: 40px; }
+.ini-num small { display: block; color: var(--text-3); font-size: 11px; }
+.ini-nome .nome { font-weight: 700; font-size: 16px; cursor: pointer; }
+.ini-nome .sub { font-size: 12px; color: var(--text-2); }
+.ini-rec { display: flex; flex-direction: column; gap: 6px; }
+.ini-acoes { display: flex; gap: 4px; }
+@media (max-width: 980px) {
+  .linha-ini { grid-template-columns: 56px 1fr auto; }
+  .linha-ini .ini-rec, .linha-ini .ini-cond { grid-column: 1 / -1; }
+}
+
+/* ---------- Modal ---------- */
+.modal-fundo { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 5vh 12px; overflow: auto; }
+.modal { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; width: min(640px, 100%); padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.modal h2 { font-size: 20px; color: var(--accent); }
+.modal .rodape { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.form-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.form-grade .largo { grid-column: 1 / -1; }
+.opcoes-descanso { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.opcao { border: 1px solid var(--border-strong); border-radius: 10px; padding: 8px 10px; cursor: pointer; background: var(--surface-2); text-align: left; }
+.opcao b { display: block; }
+.opcao small { color: var(--text-2); }
+.opcao.ativa { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+table.previa { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.previa th, table.previa td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+table.previa th { color: var(--text-2); font-weight: 600; font-size: 12px; }
+.ganho { color: var(--ok); font-weight: 700; }
+.grade-cond { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; max-height: 46vh; overflow: auto; }
+.grade-cond button { text-align: left; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; }
+.grade-cond button small { display: block; color: var(--text-3); font-size: 11px; }
+.grade-cond button:hover { border-color: var(--accent); }
+.recentes { display: flex; gap: 6px; flex-wrap: wrap; }
+.nota { font-size: 12px; color: var(--text-3); }
+
+/* ---------- Toast ---------- */
+.toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: #23282f; border: 1px solid var(--border-strong); border-radius: 12px; padding: 10px 14px; display: flex; gap: 12px; align-items: center; z-index: 60; box-shadow: 0 8px 30px rgba(0,0,0,.5); max-width: 92vw; }
+
+/* ---------- Login / mesas ---------- */
+.centro { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.caixa { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; width: min(420px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.caixa h1 { color: var(--accent); font-size: 26px; text-align: center; }
+.caixa .sub { text-align: center; color: var(--text-2); margin-top: -6px; }
+.erro { color: var(--danger); font-size: 14px; }
+.lista-mesas { display: flex; flex-direction: column; gap: 6px; }
+.lista-mesas .mesa { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border-radius: 10px; padding: 8px 10px; }
+.lista-mesas .mesa button.abrir { flex: 1; text-align: left; background: none; border: 0; font-weight: 600; }
+.lista-mesas .mesa small { color: var(--text-3); font-weight: 400; display: block; }
